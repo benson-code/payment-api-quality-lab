@@ -97,3 +97,16 @@ def pay(body: PaymentBody, idempotency_key: str | None = Header(default=None),
 @app.get("/payments/{payment_id}")
 def get_payment(payment_id: str, conn=Depends(get_conn)) -> dict:
     return service.get_payment(conn, payment_id)
+
+
+@app.post("/payments/{payment_id}/refunds", status_code=201)
+def refund(payment_id: str, body: AmountBody, idempotency_key: str | None = Header(default=None),
+           conn=Depends(get_conn)) -> JSONResponse:
+    status, response, replayed = service.refund(conn, idempotency_key, payment_id, body.model_dump())
+    return JSONResponse(status_code=status, content=response,
+                        headers={"Idempotent-Replayed": "true" if replayed else "false"})
+
+
+@app.get("/wallets/{wallet_id}/transactions")
+def transactions(wallet_id: str, conn=Depends(get_conn)) -> dict:
+    return service.transactions(conn, wallet_id)

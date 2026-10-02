@@ -35,6 +35,13 @@ CREATE TABLE IF NOT EXISTS payments (
     created_at   TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS refunds (
+    refund_id    TEXT PRIMARY KEY,
+    payment_id   TEXT NOT NULL REFERENCES payments(payment_id),
+    amount       INTEGER NOT NULL,                 -- 分
+    created_at   TEXT NOT NULL
+);
+
 -- 用過的 Idempotency-Key：同一把 key 再來，就回當初的結果，不再做一次
 CREATE TABLE IF NOT EXISTS idempotency_keys (
     scope         TEXT NOT NULL,                   -- 哪一支 API：payment / refund

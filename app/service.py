@@ -152,4 +152,53 @@ def get_payment(conn: sqlite3.Connection, payment_id: str) -> dict:
     row = conn.execute("SELECT * FROM payments WHERE payment_id = ?", (payment_id,)).fetchone()
     if row is None:
         raise ApiError(404, "PAYMENT_NOT_FOUND", f"payment {payment_id} does not exist")
-    return payment_view(row)
+    view = payment_view(row)
+    view["refunds"] = [{"refund_id": r["refund_id"], "amount": format_cents(r["amount"]),
+                        "created_at": r["created_at"]}
+                       for r in conn.execute("SELECT * FROM refunds WHERE payment_id = ? ORDER BY rowid",
+                                             (payment_id,))]
+    return view
+
+
+# ---- 退款 ----------------------------------------------------------------------
+
+def refund(conn: sqlite3.Connection, key: str | None, payment_id: str, body: dict) -> tuple[int, dict, bool]:
+    """退款：可以分很多次，但累計不能超過原付款。冪等的做法跟付款一樣。"""
+    key = require_key(key)
+    cents = parse_amount(body.get("amount"))
+    fingerprint = {"payment_id": payment_id, "amount": body.get("amount")}
+    with write_tx(conn):
+        seen = check_idempotency(conn, "refund", key, fingerprint)
+        if seen:
+            return seen[0], seen[1], True
+        payment = conn.execute("SELECT * FROM payments WHERE payment_id = ?", (payment_id,)).fetchone()
+        if payment is None:
+            raise ApiError(404, "PAYMENT_NOT_FOUND", f"payment {payment_id} does not exist")
+        # 「已退累計」在鎖住的交易裡讀：同時來的另一筆退款，要等這筆做完才讀得到
+        refundable = payment["amount"] - payment["refunded"]
+        if cents > refundable:
+            raise ApiError(409, "REFUND_EXCEEDS_PAYMENT",
+                           f"only {format_cents(refundable)} of this payment can still be refunded")
+        refund_id, created_at = new_id("r"), now()
+        conn.execute("INSERT INTO refunds (refund_id, payment_id, amount, created_at) VALUES (?, ?, ?, ?)",
+                     (refund_id, payment_id, cents, created_at))
+        conn.execute("UPDATE payments SET refunded = refunded + ? WHERE payment_id = ?", (cents, payment_id))
+        balance = apply_entry(conn, payment["wallet_id"], cents, "REFUND", refund_id)
+        response = {"refund_id": refund_id, "payment_id": payment_id, "amount": format_cents(cents),
+                    "payment_refunded": format_cents(payment["refunded"] + cents),
+                    "payment_refundable": format_cents(refundable - cents),
+                    "balance_after": format_cents(balance), "created_at": created_at}
+        save_idempotency(conn, "refund", key, fingerprint, 201, response)
+    return 201, response, False
+
+
+# ---- 交易紀錄 ------------------------------------------------------------------
+
+def transactions(conn: sqlite3.Connection, wallet_id: str) -> dict:
+    get_wallet_row(conn, wallet_id)                    # 錢包不存在就 404
+    rows = conn.execute("SELECT * FROM ledger WHERE wallet_id = ? ORDER BY entry_id", (wallet_id,))
+    return {"wallet_id": wallet_id,
+            "transactions": [{"entry_id": r["entry_id"], "type": r["type"],
+                              "amount": format_cents(r["amount"]),
+                              "balance_after": format_cents(r["balance_after"]),
+                              "ref_id": r["ref_id"], "created_at": r["created_at"]} for r in rows]}
