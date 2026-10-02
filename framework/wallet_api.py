@@ -23,7 +23,7 @@ class WalletAPI(BaseClient):
     def _key_header(key) -> dict:
         if key is NO_KEY:
             return {}
-        return {"Idempotency-Key": key or new_key()}
+        return {"Idempotency-Key": new_key() if key is None else key}
 
     def health(self) -> requests.Response:
         return self.request("GET", "/health")
