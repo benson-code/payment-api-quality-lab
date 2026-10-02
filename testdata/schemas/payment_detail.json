@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "payment_id": {
+      "type": "string",
+      "pattern": "^p_[0-9a-z]+$"
+    },
+    "wallet_id": {
+      "type": "string",
+      "pattern": "^w_[0-9a-z]+$"
+    },
+    "amount": {
+      "type": "string",
+      "pattern": "^-?\\d+\\.\\d{2}$"
+    },
+    "refunded": {
+      "type": "string",
+      "pattern": "^-?\\d+\\.\\d{2}$"
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 20
+    },
+    "refunds": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "refund_id": {
+            "type": "string",
+            "pattern": "^r_[0-9a-z]+$"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d{2}$"
+          },
+          "created_at": {
+            "type": "string",
+            "minLength": 20
+          }
+        },
+        "required": [
+          "refund_id",
+          "amount",
+          "created_at"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "payment_id",
+    "wallet_id",
+    "amount",
+    "refunded",
+    "created_at",
+    "refunds"
+  ],
+  "additionalProperties": false
+}

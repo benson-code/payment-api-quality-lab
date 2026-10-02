@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "transfer_id": {
+      "type": "string",
+      "pattern": "^x_[0-9a-z]+$"
+    },
+    "from_wallet_id": {
+      "type": "string",
+      "pattern": "^w_[0-9a-z]+$"
+    },
+    "to_wallet_id": {
+      "type": "string",
+      "pattern": "^w_[0-9a-z]+$"
+    },
+    "amount": {
+      "type": "string",
+      "pattern": "^-?\\d+\\.\\d{2}$"
+    },
+    "from_balance_after": {
+      "type": "string",
+      "pattern": "^-?\\d+\\.\\d{2}$"
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 20
+    }
+  },
+  "required": [
+    "transfer_id",
+    "from_wallet_id",
+    "to_wallet_id",
+    "amount",
+    "from_balance_after",
+    "created_at"
+  ],
+  "additionalProperties": false
+}

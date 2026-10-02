@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "topup_id": {
+      "type": "string",
+      "pattern": "^t_[0-9a-z]+$"
+    },
+    "wallet_id": {
+      "type": "string",
+      "pattern": "^w_[0-9a-z]+$"
+    },
+    "amount": {
+      "type": "string",
+      "pattern": "^-?\\d+\\.\\d{2}$"
+    },
+    "balance": {
+      "type": "string",
+      "pattern": "^-?\\d+\\.\\d{2}$"
+    }
+  },
+  "required": [
+    "topup_id",
+    "wallet_id",
+    "amount",
+    "balance"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "wallet_id": {
+      "type": "string",
+      "pattern": "^w_[0-9a-z]+$"
+    },
+    "owner": {
+      "type": "string"
+    },
+    "currency": {
+      "const": "TWD"
+    },
+    "balance": {
+      "type": "string",
+      "pattern": "^-?\\d+\\.\\d{2}$"
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 20
+    }
+  },
+  "required": [
+    "wallet_id",
+    "owner",
+    "currency",
+    "balance",
+    "created_at"
+  ],
+  "additionalProperties": false
+}

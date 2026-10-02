@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "wallet_id": {
+      "type": "string",
+      "pattern": "^w_[0-9a-z]+$"
+    },
+    "transactions": {
+      "type": "array",
+      "items": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "entry_id": {
+            "type": "integer"
+          },
+          "type": {
+            "enum": [
+              "TOPUP",
+              "PAYMENT",
+              "REFUND",
+              "TRANSFER_OUT",
+              "TRANSFER_IN"
+            ]
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d{2}$"
+          },
+          "balance_after": {
+            "type": "string",
+            "pattern": "^-?\\d+\\.\\d{2}$"
+          },
+          "ref_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "minLength": 20
+          }
+        },
+        "required": [
+          "entry_id",
+          "type",
+          "amount",
+          "balance_after",
+          "ref_id",
+          "created_at"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "wallet_id",
+    "transactions"
+  ],
+  "additionalProperties": false
+}

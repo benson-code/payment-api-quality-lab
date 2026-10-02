@@ -1,0 +1,32 @@
+case_id,marks,is_run,endpoint,title,amount,expected_status,expected_error_code
+VAL-P01,validation|boundary,Y,payment,最小金額 0.01,"""0.01""",201,
+VAL-P02,validation,Y,payment,一位小數 10.5,"""10.5""",201,
+VAL-P03,validation,Y,payment,兩位小數 10.50,"""10.50""",201,
+VAL-P04,validation|boundary,Y,payment,零,"""0""",400,INVALID_AMOUNT
+VAL-P05,validation|boundary,Y,payment,零（兩位小數）,"""0.00""",400,INVALID_AMOUNT
+VAL-P06,validation|boundary|precision,Y,payment,小於一分 0.009,"""0.009""",400,INVALID_AMOUNT
+VAL-P07,validation|precision,Y,payment,三位小數 10.555,"""10.555""",400,INVALID_AMOUNT
+VAL-P08,validation|negative,Y,payment,負數,"""-1""",400,INVALID_AMOUNT
+VAL-P09,validation,Y,payment,數字不是字串,100.5,400,INVALID_AMOUNT
+VAL-P10,validation,Y,payment,科學記號,"""1e3""",400,INVALID_AMOUNT
+VAL-P11,validation,Y,payment,前面有空白,""" 10""",400,INVALID_AMOUNT
+VAL-P12,validation,Y,payment,非數字,"""abc""",400,INVALID_AMOUNT
+VAL-P13,validation,Y,payment,空字串,"""""",400,INVALID_AMOUNT
+VAL-P14,validation,Y,payment,null,null,400,INVALID_AMOUNT
+VAL-P15,validation,Y,payment,布林值,true,400,INVALID_AMOUNT
+VAL-T01,validation|boundary,Y,topup,最小金額 0.01,"""0.01""",201,
+VAL-T02,validation,Y,topup,一位小數 10.5,"""10.5""",201,
+VAL-T03,validation,Y,topup,兩位小數 10.50,"""10.50""",201,
+VAL-T04,validation|boundary,Y,topup,零,"""0""",400,INVALID_AMOUNT
+VAL-T05,validation|boundary,Y,topup,零（兩位小數）,"""0.00""",400,INVALID_AMOUNT
+VAL-T06,validation|boundary|precision,Y,topup,小於一分 0.009,"""0.009""",400,INVALID_AMOUNT
+VAL-T07,validation|precision,Y,topup,三位小數 10.555,"""10.555""",400,INVALID_AMOUNT
+VAL-T08,validation|negative,Y,topup,負數,"""-1""",400,INVALID_AMOUNT
+VAL-T09,validation,Y,topup,數字不是字串,100.5,400,INVALID_AMOUNT
+VAL-T10,validation,Y,topup,科學記號,"""1e3""",400,INVALID_AMOUNT
+VAL-T11,validation,Y,topup,前面有空白,""" 10""",400,INVALID_AMOUNT
+VAL-T12,validation,Y,topup,非數字,"""abc""",400,INVALID_AMOUNT
+VAL-T13,validation,Y,topup,空字串,"""""",400,INVALID_AMOUNT
+VAL-T14,validation,Y,topup,null,null,400,INVALID_AMOUNT
+VAL-T15,validation,Y,topup,布林值,true,400,INVALID_AMOUNT
+VAL-X01,validation,N,payment,範例：is_run=N 的案例不會被收進來,"""1""",201,

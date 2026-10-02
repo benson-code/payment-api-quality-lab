@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "error_code": {
+      "type": "string",
+      "pattern": "^[A-Z_]+$"
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "error_code",
+    "message"
+  ],
+  "additionalProperties": false
+}

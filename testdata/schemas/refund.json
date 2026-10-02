@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "refund_id": {
+      "type": "string",
+      "pattern": "^r_[0-9a-z]+$"
+    },
+    "payment_id": {
+      "type": "string",
+      "pattern": "^p_[0-9a-z]+$"
+    },
+    "amount": {
+      "type": "string",
+      "pattern": "^-?\\d+\\.\\d{2}$"
+    },
+    "payment_refunded": {
+      "type": "string",
+      "pattern": "^-?\\d+\\.\\d{2}$"
+    },
+    "payment_refundable": {
+      "type": "string",
+      "pattern": "^-?\\d+\\.\\d{2}$"
+    },
+    "balance_after": {
+      "type": "string",
+      "pattern": "^-?\\d+\\.\\d{2}$"
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 20
+    }
+  },
+  "required": [
+    "refund_id",
+    "payment_id",
+    "amount",
+    "payment_refunded",
+    "payment_refundable",
+    "balance_after",
+    "created_at"
+  ],
+  "additionalProperties": false
+}
