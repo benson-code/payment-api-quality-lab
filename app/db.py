@@ -5,6 +5,8 @@
 from __future__ import annotations
 
 import sqlite3
+
+from app import bugs
 from contextlib import contextmanager
 
 SCHEMA = """
@@ -79,6 +81,9 @@ def write_tx(conn: sqlite3.Connection):
     BEGIN IMMEDIATE 一開始就拿到寫入鎖：兩個請求同時要扣同一個錢包時，
     第二個會等第一個做完，才讀到正確的餘額。中途出錯就整個 ROLLBACK。
     """
+    if bugs.on("race"):
+        yield conn                        # bug: 沒有交易也沒有鎖，每句 SQL 各自生效
+        return
     conn.execute("BEGIN IMMEDIATE")
     try:
         yield conn

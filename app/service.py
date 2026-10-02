@@ -4,9 +4,11 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import time
 import uuid
 from datetime import datetime, timezone
 
+from app import bugs
 from app.db import write_tx
 from app.errors import ApiError
 from app.money import format_cents, parse_amount
@@ -54,6 +56,8 @@ def apply_entry(conn: sqlite3.Connection, wallet_id: str, amount: int,
     集中在一個地方，是為了保證：錢包餘額 永遠等於 ledger 加總。
     """
     balance = get_wallet_row(conn, wallet_id)["balance"] + amount
+    if bugs.on("race"):
+        time.sleep(0.05)                  # bug: 讀完餘額後拖一下才寫回，別的請求讀到的是舊餘額
     if balance < 0:
         raise ApiError(409, "INSUFFICIENT_BALANCE", "wallet balance is not enough")
     conn.execute("UPDATE wallets SET balance = ? WHERE wallet_id = ?", (balance, wallet_id))
@@ -80,6 +84,8 @@ def request_hash(body: dict) -> str:
 
 def check_idempotency(conn: sqlite3.Connection, scope: str, key: str, body: dict) -> tuple[int, dict] | None:
     """在寫入交易裡呼叫。這把 key 用過就回 (狀態碼, 當初的回應)；沒用過回 None。"""
+    if bugs.on("no_idempotency"):
+        return None                       # bug: 每次都當成新請求
     row = conn.execute("SELECT * FROM idempotency_keys WHERE scope = ? AND idem_key = ?",
                        (scope, key)).fetchone()
     if row is None:
@@ -104,6 +110,8 @@ def require_wallet_id(raw: object) -> str:
 
 def save_idempotency(conn: sqlite3.Connection, scope: str, key: str, body: dict,
                      status_code: int, response: dict) -> None:
+    if bugs.on("no_idempotency"):
+        return
     conn.execute("INSERT INTO idempotency_keys VALUES (?, ?, ?, ?, ?, ?)",
                  (scope, key, request_hash(body), status_code, json.dumps(response), now()))
 
@@ -176,6 +184,8 @@ def refund(conn: sqlite3.Connection, key: str | None, payment_id: str, body: dic
             raise ApiError(404, "PAYMENT_NOT_FOUND", f"payment {payment_id} does not exist")
         # 「已退累計」在鎖住的交易裡讀：同時來的另一筆退款，要等這筆做完才讀得到
         refundable = payment["amount"] - payment["refunded"]
+        if bugs.on("refund_overflow"):
+            refundable = payment["amount"]          # bug: 忘了扣掉已退的部分
         if cents > refundable:
             raise ApiError(409, "REFUND_EXCEEDS_PAYMENT",
                            f"only {format_cents(refundable)} of this payment can still be refunded")

@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app import service
+from app import bugs, service
 from app.db import connect, init_db
 from app.errors import ApiError
 
@@ -67,7 +67,8 @@ class PaymentBody(BaseModel):
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok"}
+    # 回報目前開了哪些 bug：CI 的「證明測試會紅」那一輪，要先確認開關真的有打開
+    return {"status": "ok", "bugs": sorted(bugs.ACTIVE)}
 
 
 @app.post("/wallets", status_code=201)
