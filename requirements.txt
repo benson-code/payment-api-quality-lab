@@ -1,0 +1,8 @@
+# 被測系統
+fastapi==0.142.2
+uvicorn==0.54.0
+# 測試
+pytest==9.1.1
+requests==2.34.2
+jsonschema==4.26.0
+pytest-html==4.2.0
