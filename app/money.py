@@ -1,0 +1,30 @@
+"""金額處理：API 用字串、資料庫用整數「分」，中間不經過浮點數。
+
+    "100.50"  --parse_amount-->  10050  --format_cents-->  "100.50"
+"""
+from __future__ import annotations
+
+import re
+from decimal import Decimal
+
+from app.errors import ApiError
+
+# 整數最多 12 位，小數最多 2 位；不接受正負號、空白、科學記號
+AMOUNT_RE = re.compile(r"\d{1,12}(\.\d{1,2})?")
+
+
+def parse_amount(raw: object) -> int:
+    """把 API 收到的金額字串轉成「分」。不合法一律 400。"""
+    if not isinstance(raw, str) or not AMOUNT_RE.fullmatch(raw):
+        raise ApiError(400, "INVALID_AMOUNT",
+                       "amount must be a string like '100' or '100.50' (max 2 decimals)")
+    cents = int(Decimal(raw) * 100)
+    if cents <= 0:
+        raise ApiError(400, "INVALID_AMOUNT", "amount must be greater than 0")
+    return cents
+
+
+def format_cents(cents: int) -> str:
+    """分 → 固定兩位小數的字串。10050 → '100.50'、-5 → '-0.05'。"""
+    sign = "-" if cents < 0 else ""
+    return f"{sign}{abs(cents) // 100}.{abs(cents) % 100:02d}"

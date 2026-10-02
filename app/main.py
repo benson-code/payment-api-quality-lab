@@ -1,0 +1,80 @@
+"""HTTP 路由。啟動：
+
+    DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400
+"""
+from __future__ import annotations
+
+import os
+from collections.abc import Iterator
+
+from fastapi import Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+from app import service
+from app.db import connect, init_db
+from app.errors import ApiError
+
+DB_PATH = os.environ.get("DB_PATH", "wallet.db")
+init_db(DB_PATH)
+
+app = FastAPI(title="payment-api-quality-lab")
+
+
+# ---- 錯誤：全部轉成統一格式 ---------------------------------------------------
+
+@app.exception_handler(ApiError)
+def handle_api_error(_: Request, e: ApiError) -> JSONResponse:
+    return JSONResponse(status_code=e.status, content={"error_code": e.error_code, "message": e.message})
+
+
+@app.exception_handler(RequestValidationError)
+def handle_validation_error(_: Request, e: RequestValidationError) -> JSONResponse:
+    # FastAPI 預設回 422 和一大串細節；改成跟其他錯誤一樣的格式
+    first = e.errors()[0]
+    field = ".".join(str(p) for p in first["loc"] if p != "body")
+    return JSONResponse(status_code=400, content={"error_code": "INVALID_REQUEST",
+                                                  "message": f"{field}: {first['msg']}"})
+
+
+def get_conn() -> Iterator:
+    conn = connect(DB_PATH)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+# ---- 請求格式 ------------------------------------------------------------------
+# amount 宣告成 object 而不是 str：讓「傳數字」這種錯誤進到 parse_amount，
+# 回傳跟其他金額錯誤一樣的 INVALID_AMOUNT，而不是 pydantic 的通用訊息
+
+class CreateWallet(BaseModel):
+    owner: str
+
+
+class AmountBody(BaseModel):
+    amount: object = None
+
+
+# ---- 路由 ----------------------------------------------------------------------
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+
+
+@app.post("/wallets", status_code=201)
+def create_wallet(body: CreateWallet, conn=Depends(get_conn)) -> dict:
+    return service.create_wallet(conn, body.owner)
+
+
+@app.get("/wallets/{wallet_id}")
+def get_wallet(wallet_id: str, conn=Depends(get_conn)) -> dict:
+    return service.wallet_view(service.get_wallet_row(conn, wallet_id))
+
+
+@app.post("/wallets/{wallet_id}/topups", status_code=201)
+def top_up(wallet_id: str, body: AmountBody, conn=Depends(get_conn)) -> dict:
+    return service.top_up(conn, wallet_id, body.amount)
