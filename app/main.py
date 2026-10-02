@@ -63,6 +63,12 @@ class PaymentBody(BaseModel):
     amount: object = None
 
 
+class TransferBody(BaseModel):
+    from_wallet_id: object = None
+    to_wallet_id: object = None
+    amount: object = None
+
+
 # ---- 路由 ----------------------------------------------------------------------
 
 @app.get("/health")
@@ -111,3 +117,11 @@ def refund(payment_id: str, body: AmountBody, idempotency_key: str | None = Head
 @app.get("/wallets/{wallet_id}/transactions")
 def transactions(wallet_id: str, conn=Depends(get_conn)) -> dict:
     return service.transactions(conn, wallet_id)
+
+
+@app.post("/transfers", status_code=201)
+def transfer(body: TransferBody, idempotency_key: str | None = Header(default=None),
+             conn=Depends(get_conn)) -> JSONResponse:
+    status, response, replayed = service.transfer(conn, idempotency_key, body.model_dump())
+    return JSONResponse(status_code=status, content=response,
+                        headers={"Idempotent-Replayed": "true" if replayed else "false"})

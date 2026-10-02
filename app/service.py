@@ -212,3 +212,50 @@ def transactions(conn: sqlite3.Connection, wallet_id: str) -> dict:
                               "amount": format_cents(r["amount"]),
                               "balance_after": format_cents(r["balance_after"]),
                               "ref_id": r["ref_id"], "created_at": r["created_at"]} for r in rows]}
+
+
+# ---- 轉帳 ----------------------------------------------------------------------
+
+def transfer(conn: sqlite3.Connection, key: str | None, body: dict) -> tuple[int, dict, bool]:
+    """錢包之間轉帳：扣款和入帳在同一個交易裡，要嘛都成功，要嘛都沒發生。"""
+    key = require_key(key)
+    from_id = require_wallet_id(body.get("from_wallet_id"))
+    to_id = require_wallet_id(body.get("to_wallet_id"))
+    cents = parse_amount(body.get("amount"))
+    if from_id == to_id:
+        raise ApiError(422, "SAME_WALLET", "cannot transfer to the same wallet")
+    if cents > MAX_SINGLE_PAYMENT:
+        raise ApiError(422, "LIMIT_EXCEEDED", "single transfer limit is 50000.00")
+    transfer_id, created_at = new_id("x"), now()
+
+    if bugs.on("transfer_not_atomic"):
+        # bug: 扣款先自己提交，入帳另開交易；入帳失敗時扣掉的錢不會回來
+        with write_tx(conn):
+            seen = check_idempotency(conn, "transfer", key, body)
+            if seen:
+                return seen[0], seen[1], True
+            from_balance = apply_entry(conn, from_id, -cents, "TRANSFER_OUT", transfer_id)
+        with write_tx(conn):
+            apply_entry(conn, to_id, cents, "TRANSFER_IN", transfer_id)
+            conn.execute("INSERT INTO transfers VALUES (?, ?, ?, ?, ?)", (transfer_id, from_id, to_id, cents, created_at))
+            response = transfer_view(transfer_id, from_id, to_id, cents, from_balance, created_at)
+            save_idempotency(conn, "transfer", key, body, 201, response)
+        return 201, response, False
+
+    with write_tx(conn):
+        seen = check_idempotency(conn, "transfer", key, body)
+        if seen:
+            return seen[0], seen[1], True
+        get_wallet_row(conn, to_id)                       # 收款錢包先確認存在
+        from_balance = apply_entry(conn, from_id, -cents, "TRANSFER_OUT", transfer_id)
+        apply_entry(conn, to_id, cents, "TRANSFER_IN", transfer_id)
+        conn.execute("INSERT INTO transfers VALUES (?, ?, ?, ?, ?)", (transfer_id, from_id, to_id, cents, created_at))
+        response = transfer_view(transfer_id, from_id, to_id, cents, from_balance, created_at)
+        save_idempotency(conn, "transfer", key, body, 201, response)
+    return 201, response, False
+
+
+def transfer_view(transfer_id: str, from_id: str, to_id: str, cents: int, from_balance: int, created_at: str) -> dict:
+    return {"transfer_id": transfer_id, "from_wallet_id": from_id, "to_wallet_id": to_id,
+            "amount": format_cents(cents), "from_balance_after": format_cents(from_balance),
+            "created_at": created_at}

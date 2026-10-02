@@ -44,9 +44,17 @@ CREATE TABLE IF NOT EXISTS refunds (
     created_at   TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS transfers (
+    transfer_id     TEXT PRIMARY KEY,
+    from_wallet_id  TEXT NOT NULL REFERENCES wallets(wallet_id),
+    to_wallet_id    TEXT NOT NULL REFERENCES wallets(wallet_id),
+    amount          INTEGER NOT NULL,              -- 分
+    created_at      TEXT NOT NULL
+);
+
 -- 用過的 Idempotency-Key：同一把 key 再來，就回當初的結果，不再做一次
 CREATE TABLE IF NOT EXISTS idempotency_keys (
-    scope         TEXT NOT NULL,                   -- 哪一支 API：payment / refund
+    scope         TEXT NOT NULL,                   -- 哪一支 API：payment / refund / transfer
     idem_key      TEXT NOT NULL,
     request_hash  TEXT NOT NULL,                   -- 當初請求內容的指紋
     status_code   INTEGER NOT NULL,
