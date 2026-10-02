@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: API tests
+    # repo 公開後改成 ubuntu-24.04-arm，跟開發機（OCI Ampere）同架構
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: http://127.0.0.1:8400
+      DB_PATH: ${{ github.workspace }}/ci-wallet.db
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Start the API
+        run: |
+          nohup python -m uvicorn app.main:app --port 8400 > api.log 2>&1 &
+          for i in $(seq 30); do curl -sf "$BASE_URL/health" && exit 0; sleep 1; done
+          echo "API did not start"; cat api.log; exit 1
+
+      - name: Smoke (stop here if the main flow is broken)
+        run: >
+          pytest --env=external --base-url="$BASE_URL" --db-path="$DB_PATH"
+          --target_marks=smoke
+
+      - name: Full regression
+        run: >
+          pytest --env=external --base-url="$BASE_URL" --db-path="$DB_PATH"
+          --html=reports/report.html --self-contained-html --junitxml=reports/junit.xml
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-report
+          path: |
+            reports/
+            api.log
+
+  fault-check:
+    name: Tests catch planted bugs
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python tools/fault_check.py

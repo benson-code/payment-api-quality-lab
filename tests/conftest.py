@@ -2,7 +2,7 @@
 
 兩種跑法：
     pytest                                                  # local：自己起一台 API（隨機 port、暫存資料庫）
-    pytest --env external --base-url http://127.0.0.1:8400 --db-path wallet.db
+    pytest --env=external --base-url=http://127.0.0.1:8400 --db-path=wallet.db
                                                             # external：打一台已經起好的 API（CI 用這個）
 """
 from __future__ import annotations
