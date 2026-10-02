@@ -26,12 +26,33 @@ CREATE TABLE IF NOT EXISTS ledger (
     ref_id         TEXT,                           -- 對應的付款、退款或轉帳編號
     created_at     TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS payments (
+    payment_id   TEXT PRIMARY KEY,
+    wallet_id    TEXT NOT NULL REFERENCES wallets(wallet_id),
+    amount       INTEGER NOT NULL,                 -- 分
+    refunded     INTEGER NOT NULL DEFAULT 0,       -- 已退款累計（分）
+    created_at   TEXT NOT NULL
+);
+
+-- 用過的 Idempotency-Key：同一把 key 再來，就回當初的結果，不再做一次
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    scope         TEXT NOT NULL,                   -- 哪一支 API：payment / refund
+    idem_key      TEXT NOT NULL,
+    request_hash  TEXT NOT NULL,                   -- 當初請求內容的指紋
+    status_code   INTEGER NOT NULL,
+    response      TEXT NOT NULL,                   -- 當初回應的 JSON
+    created_at    TEXT NOT NULL,
+    PRIMARY KEY (scope, idem_key)
+);
 """
 
 
 def connect(db_path: str) -> sqlite3.Connection:
-    # 每個請求自己開一條連線；isolation_level=None 代表交易由我們自己用 BEGIN 控制
-    conn = sqlite3.connect(db_path, isolation_level=None, timeout=10)
+    # 每個請求自己開一條連線；isolation_level=None 代表交易由我們自己用 BEGIN 控制。
+    # FastAPI 可能在不同執行緒開、關同一條連線，所以關掉 check_same_thread；
+    # 一條連線只服務一個請求，不會被兩個執行緒同時使用。
+    conn = sqlite3.connect(db_path, isolation_level=None, timeout=10, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn

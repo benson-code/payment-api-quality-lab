@@ -1,6 +1,8 @@
 """商業規則。路由（main.py）只負責收發 HTTP，規則都寫在這裡。"""
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -67,3 +69,87 @@ def top_up(conn: sqlite3.Connection, wallet_id: str, raw_amount: object) -> dict
         balance = apply_entry(conn, wallet_id, cents, "TOPUP", topup_id)
     return {"topup_id": topup_id, "wallet_id": wallet_id,
             "amount": format_cents(cents), "balance": format_cents(balance)}
+
+
+# ---- 冪等 ----------------------------------------------------------------------
+
+def request_hash(body: dict) -> str:
+    """請求內容的指紋：同一把 key 配上不同內容，指紋就不同。"""
+    return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+
+
+def check_idempotency(conn: sqlite3.Connection, scope: str, key: str, body: dict) -> tuple[int, dict] | None:
+    """在寫入交易裡呼叫。這把 key 用過就回 (狀態碼, 當初的回應)；沒用過回 None。"""
+    row = conn.execute("SELECT * FROM idempotency_keys WHERE scope = ? AND idem_key = ?",
+                       (scope, key)).fetchone()
+    if row is None:
+        return None
+    if row["request_hash"] != request_hash(body):
+        raise ApiError(422, "IDEMPOTENCY_KEY_REUSED",
+                       "this Idempotency-Key was already used with a different request")
+    return row["status_code"], json.loads(row["response"])
+
+
+def require_key(key: str | None) -> str:
+    if not key or len(key) > 64:
+        raise ApiError(400, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key header (1-64 chars) is required")
+    return key
+
+
+def require_wallet_id(raw: object) -> str:
+    if not isinstance(raw, str) or not raw:
+        raise ApiError(400, "INVALID_REQUEST", "wallet_id must be a non-empty string")
+    return raw
+
+
+def save_idempotency(conn: sqlite3.Connection, scope: str, key: str, body: dict,
+                     status_code: int, response: dict) -> None:
+    conn.execute("INSERT INTO idempotency_keys VALUES (?, ?, ?, ?, ?, ?)",
+                 (scope, key, request_hash(body), status_code, json.dumps(response), now()))
+
+
+# ---- 付款 ----------------------------------------------------------------------
+
+MAX_SINGLE_PAYMENT = 5_000_000          # 單筆上限 50,000.00（分）
+
+
+def payment_view(row: sqlite3.Row, balance_after: int | None = None) -> dict:
+    view = {"payment_id": row["payment_id"], "wallet_id": row["wallet_id"],
+            "amount": format_cents(row["amount"]), "refunded": format_cents(row["refunded"]),
+            "created_at": row["created_at"]}
+    if balance_after is not None:
+        view["balance_after"] = format_cents(balance_after)
+    return view
+
+
+def pay(conn: sqlite3.Connection, key: str | None, body: dict) -> tuple[int, dict, bool]:
+    """回傳 (狀態碼, 回應, 是否為重送)。
+
+    查 key、扣款、記住 key 三件事在同一個交易裡：
+    - 兩個相同 key 的請求同時到，第二個會等第一個 COMMIT 後才查 key，看到「用過了」
+    - 扣款失敗（例如餘額不足）整個 ROLLBACK，key 不會被記住，客人儲值後可以用同一把 key 再試
+    """
+    key = require_key(key)
+    wallet_id = require_wallet_id(body.get("wallet_id"))
+    cents = parse_amount(body.get("amount"))
+    if cents > MAX_SINGLE_PAYMENT:
+        raise ApiError(422, "LIMIT_EXCEEDED", "single payment limit is 50000.00")
+    with write_tx(conn):
+        seen = check_idempotency(conn, "payment", key, body)
+        if seen:
+            return seen[0], seen[1], True
+        payment_id = new_id("p")
+        balance = apply_entry(conn, wallet_id, -cents, "PAYMENT", payment_id)
+        conn.execute("INSERT INTO payments (payment_id, wallet_id, amount, created_at) VALUES (?, ?, ?, ?)",
+                     (payment_id, wallet_id, cents, now()))
+        row = conn.execute("SELECT * FROM payments WHERE payment_id = ?", (payment_id,)).fetchone()
+        response = payment_view(row, balance)
+        save_idempotency(conn, "payment", key, body, 201, response)
+    return 201, response, False
+
+
+def get_payment(conn: sqlite3.Connection, payment_id: str) -> dict:
+    row = conn.execute("SELECT * FROM payments WHERE payment_id = ?", (payment_id,)).fetchone()
+    if row is None:
+        raise ApiError(404, "PAYMENT_NOT_FOUND", f"payment {payment_id} does not exist")
+    return payment_view(row)

@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -58,6 +58,11 @@ class AmountBody(BaseModel):
     amount: object = None
 
 
+class PaymentBody(BaseModel):
+    wallet_id: object = None
+    amount: object = None
+
+
 # ---- 路由 ----------------------------------------------------------------------
 
 @app.get("/health")
@@ -78,3 +83,17 @@ def get_wallet(wallet_id: str, conn=Depends(get_conn)) -> dict:
 @app.post("/wallets/{wallet_id}/topups", status_code=201)
 def top_up(wallet_id: str, body: AmountBody, conn=Depends(get_conn)) -> dict:
     return service.top_up(conn, wallet_id, body.amount)
+
+
+@app.post("/payments", status_code=201)
+def pay(body: PaymentBody, idempotency_key: str | None = Header(default=None),
+        conn=Depends(get_conn)) -> JSONResponse:
+    # Header(...) 會把參數名 idempotency_key 對應到 HTTP header「Idempotency-Key」
+    status, response, replayed = service.pay(conn, idempotency_key, body.model_dump())
+    return JSONResponse(status_code=status, content=response,
+                        headers={"Idempotent-Replayed": "true" if replayed else "false"})
+
+
+@app.get("/payments/{payment_id}")
+def get_payment(payment_id: str, conn=Depends(get_conn)) -> dict:
+    return service.get_payment(conn, payment_id)
