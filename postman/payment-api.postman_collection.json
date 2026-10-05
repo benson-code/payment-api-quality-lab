@@ -1091,6 +1091,124 @@
           }
         }
       ]
+    },
+    {
+      "name": "06 金額邊界（資料驅動）",
+      "description": "讀 postman/data/amount-boundaries.csv，每一列跑一次：建一個新錢包，用該列的金額儲值。\n\nnewman 的跑法見 postman/run-newman.sh；Postman 裡用 Collection Runner 只跑這個資料夾並選這個 CSV。",
+      "item": [
+        {
+          "name": "AMT 建立錢包",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 這個資料夾要搭配 CSV 跑（Collection Runner 選資料檔，或 newman -d）；沒有資料就跳過",
+                  "if (!pm.iterationData.get('case_id')) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('amountWallet', pm.response.json().wallet_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wallets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets"
+              ]
+            },
+            "description": "每一列用一個新錢包，彼此不影響。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"owner\": \"postman-amount\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "AMT 用 CSV 的金額儲值",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 這個資料夾要搭配 CSV 跑（Collection Runner 選資料檔，或 newman -d）；沒有資料就跳過",
+                  "if (!pm.iterationData.get('case_id')) { pm.execution.skipRequest(); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const c = pm.iterationData.toObject();",
+                  "pm.test(`${c.case_id} ${c.title}：回 ${c.expected_status}`, () => pm.response.to.have.status(Number(c.expected_status)));",
+                  "if (c.expected_error_code) {",
+                  "    pm.test(`${c.case_id} error_code 是 ${c.expected_error_code}`, () => pm.expect(pm.response.json().error_code).to.eql(c.expected_error_code));",
+                  "} else {",
+                  "    pm.test(`${c.case_id} 餘額一分不差是 ${c.expected_balance}`, () => pm.expect(pm.response.json().balance).to.eql(c.expected_balance));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{amountWallet}}/topups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "{{amountWallet}}",
+                "topups"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"{{amount}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   ],
   "event": [
@@ -1129,6 +1247,10 @@
     },
     {
       "key": "payKey",
+      "value": ""
+    },
+    {
+      "key": "amountWallet",
       "value": ""
     }
   ]

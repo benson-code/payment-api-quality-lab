@@ -1,0 +1,10 @@
+case_id,title,amount,expected_status,expected_error_code,expected_balance
+AMT-01,最小金額 0.01,"0.01",201,,"0.01"
+AMT-02,一位小數補成兩位,"10.5",201,,"10.50"
+AMT-03,浮點數會算錯的值 19.99,"19.99",201,,"19.99"
+AMT-04,浮點數會算錯的值 0.29,"0.29",201,,"0.29"
+AMT-05,零,"0",400,INVALID_AMOUNT,
+AMT-06,負數,"-1",400,INVALID_AMOUNT,
+AMT-07,三位小數,"1.234",400,INVALID_AMOUNT,
+AMT-08,科學記號,"1e3",400,INVALID_AMOUNT,
+AMT-09,前面有空白," 10",400,INVALID_AMOUNT,

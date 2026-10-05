@@ -5,7 +5,8 @@
 #   BASE_URL=http://127.0.0.1:8400 postman/run-newman.sh   # 打一台已經起好的 API
 #   BUGS=no_idempotency postman/run-newman.sh              # 起一台開了 bug 的 API，看哪些案例變紅
 #
-# 報告在 reports/newman/：main.html（htmlextra）、main.xml（JUnit）、main.json（給 fault check 讀）
+# 跑兩輪：main 跑 01–05 主流程（06 沒有資料會自動跳過）；amounts 只跑 06，讀 CSV 每一列跑一次。
+# 報告在 reports/newman/：{main,amounts}.html（htmlextra）、.xml（JUnit）、.json（給 fault check 讀）
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -37,4 +38,7 @@ run() {
     "$@"
 }
 
-run main
+status=0
+run main || status=1
+run amounts --folder "06 金額邊界（資料驅動）" -d postman/data/amount-boundaries.csv || status=1
+exit $status
