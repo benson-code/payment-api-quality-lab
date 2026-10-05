@@ -1,0 +1,46 @@
+name: Load test
+
+# 只能手動觸發：壓測慢、結果受 runner 狀況影響，不適合每次 push 都跑
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "load：每秒 20 筆 × 1 分鐘，看門檻；stress：加壓到撐不住，看停在哪"
+        type: choice
+        options: [load, stress]
+        default: load
+
+jobs:
+  k6:
+    name: k6 ${{ inputs.scenario }}
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: grafana/setup-k6-action@v1
+        with:
+          k6-version: "2.1.0"
+
+      - name: Run k6, then reconcile the database
+        run: load/run-load.sh
+        env:
+          SCENARIO: ${{ inputs.scenario }}
+
+      - name: Write the summary to the run page
+        if: always()
+        run: |
+          cat reports/k6/summary.md >> "$GITHUB_STEP_SUMMARY" || true
+          printf '\n### 壓測後對帳\n\n```\n' >> "$GITHUB_STEP_SUMMARY"
+          cat reports/k6/invariants.txt >> "$GITHUB_STEP_SUMMARY" || true
+          printf '```\n' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: k6-${{ inputs.scenario }}
+          path: reports/k6/
