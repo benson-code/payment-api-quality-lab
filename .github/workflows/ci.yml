@@ -59,3 +59,31 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: python tools/fault_check.py
+
+  newman:
+    name: Postman collection (Newman)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - run: npm install -g newman@6.2.2 newman-reporter-htmlextra@1.23.1
+
+      - name: Run the collection (main flow + CSV amount boundaries)
+        run: postman/run-newman.sh
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: newman-report
+          path: reports/newman/
+
+      - name: Newman catches planted bugs
+        run: python tools/newman_fault_check.py

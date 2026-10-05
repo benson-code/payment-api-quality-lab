@@ -6,11 +6,11 @@
 #   BUGS=no_idempotency postman/run-newman.sh              # 起一台開了 bug 的 API，看哪些案例變紅
 #
 # 跑兩輪：main 跑 01–05 主流程（06 沒有資料會自動跳過）；amounts 只跑 06，讀 CSV 每一列跑一次。
-# 報告在 reports/newman/：{main,amounts}.html（htmlextra）、.xml（JUnit）、.json（給 fault check 讀）
+# 報告在 reports/newman/（可用 NEWMAN_OUT 改）：{main,amounts}.html（htmlextra）、.xml（JUnit）、.json（給 fault check 讀）
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-OUT=reports/newman
+OUT=${NEWMAN_OUT:-reports/newman}
 mkdir -p "$OUT"
 PY=${PYTHON:-$( [ -x .venv/bin/python ] && echo .venv/bin/python || echo python3 )}
 
