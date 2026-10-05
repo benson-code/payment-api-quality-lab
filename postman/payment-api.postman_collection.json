@@ -1,0 +1,1135 @@
+{
+  "info": {
+    "_postman_id": "6f1c2a4e-8d3b-4c5a-9e7f-0a1b2c3d4e5f",
+    "name": "payment-api-quality-lab",
+    "description": "自建錢包／支付 API 的 Postman collection（練習專案，不連任何真實金流）。\n\n01–05 照順序跑，前一支存下的 ID 給後一支用；06 搭配 CSV 資料驅動。\n每支 request 的測試名稱以案例編號開頭（PM-xx、AMT-xx）。\n\n併發（同時扣款、同時重送）不在這裡：Postman 一次只送一個請求，那些交給 pytest。",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 健康檢查",
+      "description": "部署後第一支打的 API。",
+      "item": [
+        {
+          "name": "PM-01 服務正常且沒有開任何 bug",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-01 回 200', () => pm.response.to.have.status(200));",
+                  "pm.test('PM-01 status 是 ok', () => pm.expect(pm.response.json().status).to.eql(\"ok\"));",
+                  "pm.test('PM-01 沒有開任何 bug 開關', () => pm.expect(pm.response.json().bugs).to.eql([]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "`bugs` 列出被測系統開了哪些埋 bug 開關。正常環境必須是空的；故障演練時這一支會紅，提醒你開關是開著的。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 主流程",
+      "description": "建錢包 → 儲值 → 付款 → 查付款 → 部分退款 → 對帳。前一支存下的 ID 給後一支用。",
+      "item": [
+        {
+          "name": "PM-02 建立錢包 A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-02 回 201', () => pm.response.to.have.status(201));",
+                  "pm.test('PM-02 回應符合 wallet schema', () => pm.response.to.have.jsonSchema({\"type\": \"object\", \"required\": [\"wallet_id\", \"owner\", \"currency\", \"balance\", \"created_at\"], \"additionalProperties\": false, \"properties\": {\"wallet_id\": {\"type\": \"string\", \"pattern\": \"^w_[0-9a-z]+$\"}, \"owner\": {\"type\": \"string\"}, \"currency\": {\"const\": \"TWD\"}, \"balance\": {\"type\": \"string\", \"pattern\": \"^-?\\\\d+\\\\.\\\\d{2}$\"}, \"created_at\": {\"type\": \"string\", \"minLength\": 20}}}));",
+                  "pm.test('PM-02 新錢包餘額是 0.00', () => pm.expect(pm.response.json().balance).to.eql(\"0.00\"));",
+                  "pm.collectionVariables.set('walletA', pm.response.json().wallet_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wallets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets"
+              ]
+            },
+            "description": "新錢包餘額 0，幣別 TWD。存下 walletA 給後面用。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"owner\": \"postman-A\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-03 儲值 1000.00",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-03 回 201', () => pm.response.to.have.status(201));",
+                  "pm.test('PM-03 儲值金額是 1000.00', () => pm.expect(pm.response.json().amount).to.eql(\"1000.00\"));",
+                  "pm.test('PM-03 餘額變成 1000.00', () => pm.expect(pm.response.json().balance).to.eql(\"1000.00\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletA}}/topups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "{{walletA}}",
+                "topups"
+              ]
+            },
+            "description": "金額一律用字串傳，避免浮點數。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"1000.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-04 付款 300.00",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// 先產生一把 key 存起來，PM-09、PM-11 要用同一把重送",
+                  "pm.collectionVariables.set('payKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-04 回 201', () => pm.response.to.have.status(201));",
+                  "pm.test('PM-04 回應符合 payment schema', () => pm.response.to.have.jsonSchema({\"type\": \"object\", \"required\": [\"payment_id\", \"wallet_id\", \"amount\", \"refunded\", \"balance_after\", \"created_at\"], \"additionalProperties\": false, \"properties\": {\"payment_id\": {\"type\": \"string\", \"pattern\": \"^p_[0-9a-z]+$\"}, \"wallet_id\": {\"type\": \"string\", \"pattern\": \"^w_[0-9a-z]+$\"}, \"amount\": {\"type\": \"string\", \"pattern\": \"^-?\\\\d+\\\\.\\\\d{2}$\"}, \"refunded\": {\"type\": \"string\", \"pattern\": \"^-?\\\\d+\\\\.\\\\d{2}$\"}, \"balance_after\": {\"type\": \"string\", \"pattern\": \"^-?\\\\d+\\\\.\\\\d{2}$\"}, \"created_at\": {\"type\": \"string\", \"minLength\": 20}}}));",
+                  "pm.test('PM-04 扣款後餘額 700.00', () => pm.expect(pm.response.json().balance_after).to.eql(\"700.00\"));",
+                  "pm.test('PM-04 第一次送出不是重送', () => pm.response.to.have.header('Idempotent-Replayed', 'false'));",
+                  "pm.collectionVariables.set('paymentId', pm.response.json().payment_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{payKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments"
+              ]
+            },
+            "description": "付款必須帶 Idempotency-Key。這把 key 存成 payKey，03 冪等那一組會拿它重送。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_id\": \"{{walletA}}\",\n  \"amount\": \"300.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-05 查詢付款",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-05 回 200', () => pm.response.to.have.status(200));",
+                  "pm.test('PM-05 付款金額 300.00', () => pm.expect(pm.response.json().amount).to.eql(\"300.00\"));",
+                  "pm.test('PM-05 已退 0.00', () => pm.expect(pm.response.json().refunded).to.eql(\"0.00\"));",
+                  "pm.test('PM-05 沒有退款明細', () => pm.expect(pm.response.json().refunds).to.eql([]));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{paymentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "{{paymentId}}"
+              ]
+            },
+            "description": "還沒退款，refunded 是 0.00、退款明細是空的。"
+          }
+        },
+        {
+          "name": "PM-06 部分退款 100.00",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-06 回 201', () => pm.response.to.have.status(201));",
+                  "pm.test('PM-06 回應符合 refund schema', () => pm.response.to.have.jsonSchema({\"type\": \"object\", \"required\": [\"refund_id\", \"payment_id\", \"amount\", \"payment_refunded\", \"payment_refundable\", \"balance_after\", \"created_at\"], \"additionalProperties\": false, \"properties\": {\"refund_id\": {\"type\": \"string\", \"pattern\": \"^r_[0-9a-z]+$\"}, \"payment_id\": {\"type\": \"string\", \"pattern\": \"^p_[0-9a-z]+$\"}, \"amount\": {\"type\": \"string\", \"pattern\": \"^-?\\\\d+\\\\.\\\\d{2}$\"}, \"payment_refunded\": {\"type\": \"string\", \"pattern\": \"^-?\\\\d+\\\\.\\\\d{2}$\"}, \"payment_refundable\": {\"type\": \"string\", \"pattern\": \"^-?\\\\d+\\\\.\\\\d{2}$\"}, \"balance_after\": {\"type\": \"string\", \"pattern\": \"^-?\\\\d+\\\\.\\\\d{2}$\"}, \"created_at\": {\"type\": \"string\", \"minLength\": 20}}}));",
+                  "pm.test('PM-06 累計已退 100.00', () => pm.expect(pm.response.json().payment_refunded).to.eql(\"100.00\"));",
+                  "pm.test('PM-06 還能退 200.00', () => pm.expect(pm.response.json().payment_refundable).to.eql(\"200.00\"));",
+                  "pm.test('PM-06 退款後餘額 800.00', () => pm.expect(pm.response.json().balance_after).to.eql(\"800.00\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{paymentId}}/refunds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "{{paymentId}}",
+                "refunds"
+              ]
+            },
+            "description": "退款可以分很多次，回應會告訴你還能退多少。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"100.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-07 查錢包餘額",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-07 回 200', () => pm.response.to.have.status(200));",
+                  "pm.test('PM-07 餘額是 800.00', () => pm.expect(pm.response.json().balance).to.eql(\"800.00\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "{{walletA}}"
+              ]
+            },
+            "description": "1000 − 300 + 100 = 800。"
+          }
+        },
+        {
+          "name": "PM-08 交易紀錄",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-08 回 200', () => pm.response.to.have.status(200));",
+                  "const txs = pm.response.json().transactions;",
+                  "pm.test('PM-08 三筆紀錄依序是儲值、付款、退款', () => pm.expect(txs.map(t => t.type)).to.eql(['TOPUP', 'PAYMENT', 'REFUND']));",
+                  "pm.test('PM-08 金額有正負號', () => pm.expect(txs.map(t => t.amount)).to.eql(['1000.00', '-300.00', '100.00']));",
+                  "pm.test('PM-08 最後一筆的餘額等於錢包餘額', () => pm.expect(txs[txs.length - 1].balance_after).to.eql('800.00'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletA}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "{{walletA}}",
+                "transactions"
+              ]
+            },
+            "description": "每一筆餘額變動都要留在 ledger，類型、金額、順序都要對。"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 冪等",
+      "description": "網路逾時後客戶端會重送。同一把 key 只能扣一次錢。",
+      "item": [
+        {
+          "name": "PM-09 同一把 key 重送付款",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-09 回 201', () => pm.response.to.have.status(201));",
+                  "pm.test('PM-09 回應標示這是重送', () => pm.response.to.have.header('Idempotent-Replayed', 'true'));",
+                  "pm.test('PM-09 回的是同一筆付款', () => pm.expect(pm.response.json().payment_id).to.eql(pm.collectionVariables.get('paymentId')));",
+                  "pm.test('PM-09 回的是當初的回應（扣款後 700.00）', () => pm.expect(pm.response.json().balance_after).to.eql(\"700.00\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{payKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments"
+              ]
+            },
+            "description": "跟 PM-04 一模一樣的請求。必須回當初那筆付款，而不是再扣一次。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_id\": \"{{walletA}}\",\n  \"amount\": \"300.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-10 重送後餘額沒有再扣",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-10 回 200', () => pm.response.to.have.status(200));",
+                  "pm.test('PM-10 餘額是 800.00', () => pm.expect(pm.response.json().balance).to.eql(\"800.00\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "{{walletA}}"
+              ]
+            },
+            "description": "API 說沒重複扣款不算數，餘額沒變才算。"
+          }
+        },
+        {
+          "name": "PM-11 同一把 key 換金額",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-11 回 422 IDEMPOTENCY_KEY_REUSED', () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().error_code).to.eql('IDEMPOTENCY_KEY_REUSED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{payKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments"
+              ]
+            },
+            "description": "同一把 key 配上不同內容，多半是客戶端的 bug，必須拒絕，不能默默當成重送或新付款。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_id\": \"{{walletA}}\",\n  \"amount\": \"299.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-12 沒帶 Idempotency-Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-12 回 400 IDEMPOTENCY_KEY_REQUIRED', () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error_code).to.eql('IDEMPOTENCY_KEY_REQUIRED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments"
+              ]
+            },
+            "description": "沒有 key 就無法保證不重複扣款，直接拒絕。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_id\": \"{{walletA}}\",\n  \"amount\": \"1.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 錯誤處理",
+      "description": "每一種錯誤都要回對的狀態碼和 error_code，格式統一由 collection 層檢查。",
+      "item": [
+        {
+          "name": "PM-13 查不存在的錢包",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-13 回 404 WALLET_NOT_FOUND', () => {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.json().error_code).to.eql('WALLET_NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/w_doesnotexist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "w_doesnotexist"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "PM-14 餘額不足（差一分錢）",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-14 回 409 INSUFFICIENT_BALANCE', () => {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().error_code).to.eql('INSUFFICIENT_BALANCE');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments"
+              ]
+            },
+            "description": "餘額 800.00，付 800.01。邊界取界線外第一個點。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_id\": \"{{walletA}}\",\n  \"amount\": \"800.01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-15 累計退款超過原付款",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-15 回 409 REFUND_EXCEEDS_PAYMENT', () => {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().error_code).to.eql('REFUND_EXCEEDS_PAYMENT');",
+                  "});",
+                  "pm.test('PM-15 訊息說明還能退多少', () => pm.expect(pm.response.json().message).to.include('200.00'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments/{{paymentId}}/refunds",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments",
+                "{{paymentId}}",
+                "refunds"
+              ]
+            },
+            "description": "原付款 300.00，已退 100.00，還能退 200.00。退 200.01 單看這一筆沒超過 300，累計就超過了。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": \"200.01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-16 金額傳數字而不是字串",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-16 回 400 INVALID_AMOUNT', () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error_code).to.eql('INVALID_AMOUNT');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletA}}/topups",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "{{walletA}}",
+                "topups"
+              ]
+            },
+            "description": "JSON 數字到程式裡常變成浮點數，所以 API 只收字串。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-17 單筆超過上限 50000.01",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-17 回 422 LIMIT_EXCEEDED', () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().error_code).to.eql('LIMIT_EXCEEDED');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/payments",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "payments"
+              ]
+            },
+            "description": "單筆上限 50,000.00，取界線外第一個點。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"wallet_id\": \"{{walletA}}\",\n  \"amount\": \"50000.01\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-18 owner 空字串",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-18 回 400 INVALID_OWNER', () => {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error_code).to.eql('INVALID_OWNER');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wallets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"owner\": \"\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 轉帳",
+      "description": "扣款和入帳要嘛都成功，要嘛都沒發生。",
+      "item": [
+        {
+          "name": "PM-19 建立錢包 B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-19 回 201', () => pm.response.to.have.status(201));",
+                  "pm.test('PM-19 回應符合 wallet schema', () => pm.response.to.have.jsonSchema({\"type\": \"object\", \"required\": [\"wallet_id\", \"owner\", \"currency\", \"balance\", \"created_at\"], \"additionalProperties\": false, \"properties\": {\"wallet_id\": {\"type\": \"string\", \"pattern\": \"^w_[0-9a-z]+$\"}, \"owner\": {\"type\": \"string\"}, \"currency\": {\"const\": \"TWD\"}, \"balance\": {\"type\": \"string\", \"pattern\": \"^-?\\\\d+\\\\.\\\\d{2}$\"}, \"created_at\": {\"type\": \"string\", \"minLength\": 20}}}));",
+                  "pm.collectionVariables.set('walletB', pm.response.json().wallet_id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/wallets",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"owner\": \"postman-B\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-20 A 轉 200.00 給 B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-20 回 201', () => pm.response.to.have.status(201));",
+                  "pm.test('PM-20 回應符合 transfer schema', () => pm.response.to.have.jsonSchema({\"type\": \"object\", \"required\": [\"transfer_id\", \"from_wallet_id\", \"to_wallet_id\", \"amount\", \"from_balance_after\", \"created_at\"], \"additionalProperties\": false, \"properties\": {\"transfer_id\": {\"type\": \"string\", \"pattern\": \"^x_[0-9a-z]+$\"}, \"from_wallet_id\": {\"type\": \"string\"}, \"to_wallet_id\": {\"type\": \"string\"}, \"amount\": {\"type\": \"string\", \"pattern\": \"^-?\\\\d+\\\\.\\\\d{2}$\"}, \"from_balance_after\": {\"type\": \"string\", \"pattern\": \"^-?\\\\d+\\\\.\\\\d{2}$\"}, \"created_at\": {\"type\": \"string\", \"minLength\": 20}}}));",
+                  "pm.test('PM-20 A 轉出後剩 600.00', () => pm.expect(pm.response.json().from_balance_after).to.eql(\"600.00\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transfers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_wallet_id\": \"{{walletA}}\",\n  \"to_wallet_id\": \"{{walletB}}\",\n  \"amount\": \"200.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-21 A 餘額 600.00",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-21 回 200', () => pm.response.to.have.status(200));",
+                  "pm.test('PM-21 餘額是 600.00', () => pm.expect(pm.response.json().balance).to.eql(\"600.00\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "{{walletA}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "PM-22 B 餘額 200.00",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-22 回 200', () => pm.response.to.have.status(200));",
+                  "pm.test('PM-22 餘額是 200.00', () => pm.expect(pm.response.json().balance).to.eql(\"200.00\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletB}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "{{walletB}}"
+              ]
+            },
+            "description": ""
+          }
+        },
+        {
+          "name": "PM-23 轉給自己",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-23 回 422 SAME_WALLET', () => {",
+                  "    pm.response.to.have.status(422);",
+                  "    pm.expect(pm.response.json().error_code).to.eql('SAME_WALLET');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transfers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_wallet_id\": \"{{walletA}}\",\n  \"to_wallet_id\": \"{{walletA}}\",\n  \"amount\": \"1.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-24 轉給不存在的錢包",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-24 回 404 WALLET_NOT_FOUND', () => {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.json().error_code).to.eql('WALLET_NOT_FOUND');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/transfers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "transfers"
+              ]
+            },
+            "description": "下一支 PM-25 確認 A 的錢沒有被扣走。",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_wallet_id\": \"{{walletA}}\",\n  \"to_wallet_id\": \"w_doesnotexist\",\n  \"amount\": \"100.00\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PM-25 失敗的轉帳沒有扣到 A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('PM-25 回 200', () => pm.response.to.have.status(200));",
+                  "pm.test('PM-25 餘額是 600.00', () => pm.expect(pm.response.json().balance).to.eql(\"600.00\"));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletA}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "wallets",
+                "{{walletA}}"
+              ]
+            },
+            "description": "只看 PM-24 回 404 不夠：如果扣款和入帳分成兩個交易，API 一樣回 404，但錢已經扣了。"
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// 每一支 request 都會跑這一段：回應時間、格式、錯誤回應的統一格式",
+          "// 測試名稱開頭放案例編號（PM-xx、AMT-xx），報告和 fault check 都靠它對應案例",
+          "const id = pm.iterationData.get('case_id') || pm.info.requestName.split(' ')[0];",
+          "pm.test(`${id} 回應時間 < 1000ms`, () => pm.expect(pm.response.responseTime).to.be.below(1000));",
+          "pm.test(`${id} 回應是 JSON`, () => pm.response.to.have.header('Content-Type', 'application/json'));",
+          "if (pm.response.code >= 400) {",
+          "    pm.test(`${id} 錯誤回應格式統一`, () => pm.response.to.have.jsonSchema({",
+          "        type: 'object', required: ['error_code', 'message'], additionalProperties: false,",
+          "        properties: { error_code: { type: 'string' }, message: { type: 'string' } },",
+          "    }));",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "walletA",
+      "value": ""
+    },
+    {
+      "key": "walletB",
+      "value": ""
+    },
+    {
+      "key": "paymentId",
+      "value": ""
+    },
+    {
+      "key": "payKey",
+      "value": ""
+    }
+  ]
+}
