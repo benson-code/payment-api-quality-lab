@@ -9,8 +9,7 @@ on:
 jobs:
   test:
     name: API tests
-    # repo 公開後改成 ubuntu-24.04-arm，跟開發機（OCI Ampere）同架構
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     env:
       BASE_URL: http://127.0.0.1:8400
       DB_PATH: ${{ github.workspace }}/ci-wallet.db
@@ -50,7 +49,7 @@ jobs:
   fault-check:
     name: Tests catch planted bugs
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -62,7 +61,7 @@ jobs:
 
   newman:
     name: Postman collection (Newman)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7

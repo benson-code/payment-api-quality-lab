@@ -238,7 +238,7 @@ BUGS=race DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400   # 開�
 `race` 會讓哪些測試失敗跟執行時機有關（本機 6 個、CI 上 5 個），所以 fault_check 只要求
 每次都穩定抓得到的 CON-001 與「餘額 = ledger」。
 
-目前用 x64 runner；repo 公開後改成 `ubuntu-24.04-arm`，跟開發機同架構。
+CI 跑在 GitHub 的 ARM64 runner（`ubuntu-24.04-arm`），跟開發機（OCI Ampere）同架構：本機過、CI 也過，不會卡在架構差異。
 
 ## 7. AI 輔助開發流程
 
