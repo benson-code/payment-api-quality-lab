@@ -125,7 +125,7 @@ function summaryMarkdown(data) {
         `| 來不及送出的請求（dropped） | ${val('dropped_iterations', 'count') || 0} |`,
     ];
     if (SCENARIO === 'stress') {
-        lines.push(`| 停下時的目標負載 | 約每秒 ${stressRateAt(seconds).toFixed(0)} 筆 |`);
+        lines.push(`| 加壓結果 | ${stressOutcome(seconds)} |`);
     }
     lines.push('', '| 門檻 | 結果 |', '|---|---|');
     for (const [name, metric] of Object.entries(m)) {
@@ -134,6 +134,16 @@ function summaryMarkdown(data) {
         }
     }
     return lines.join('\n');
+}
+
+// 跑的時間比全部階段短，才是中途停下；跑滿了就是一路加到最高都沒停，不能報成「停在 400」
+function stressOutcome(seconds) {
+    const total = STRESS_STAGES.reduce((sum, s) => sum + parseInt(s.duration, 10) * 60, 0);
+    const top = STRESS_STAGES[STRESS_STAGES.length - 1].target;
+    if (seconds >= total) {
+        return `跑完全部階段（最高每秒 ${top} 筆），沒有中途停下`;
+    }
+    return `第 ${seconds.toFixed(0)} 秒中途停下，當時目標負載約每秒 ${stressRateAt(seconds).toFixed(0)} 筆`;
 }
 
 // ramping-arrival-rate 在第 t 秒的目標負載（各階段之間是線性爬升）

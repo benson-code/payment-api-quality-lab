@@ -3,7 +3,7 @@
 #
 #   SCENARIO=smoke  load/run-load.sh    # 1 個使用者 5 次，確認腳本沒壞（本機可跑）
 #   SCENARIO=load   load/run-load.sh    # 每秒 20 筆 × 1 分鐘，門檻沒過就失敗（預設）
-#   SCENARIO=stress load/run-load.sh    # 一路加壓到撐不住；門檻破了是預期的，只要帳對就算過
+#   SCENARIO=stress load/run-load.sh    # 一路加到每秒 400 筆，門檻破了就停；破了也算過，只要帳對
 #
 # 不管哪個情境，對帳（tools/check_invariants.py）沒過一律失敗：壓到崩潰也不能算錯錢。
 set -euo pipefail
@@ -38,7 +38,7 @@ if [ "$inv_status" -ne 0 ]; then
 fi
 # stress 只容許「門檻沒過」（k6 exit 99）。k6 本身出錯時資料庫可能是空的，空的帳也會「對帳通過」
 if [ "$SCENARIO" = stress ] && [ "$k6_status" -eq 99 ]; then
-  echo "stress：門檻在加壓途中被突破（預期中），帳是對的"; exit 0
+  echo "stress：門檻在加壓途中被突破，停在那裡；帳是對的"; exit 0
 fi
 if [ "$k6_status" -ne 0 ]; then
   echo "k6 沒過（exit $k6_status）"; exit "$k6_status"

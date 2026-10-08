@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       scenario:
-        description: "load：每秒 20 筆 × 1 分鐘，看門檻；stress：加壓到撐不住，看停在哪"
+        description: "load：每秒 20 筆 × 1 分鐘，看門檻；stress：一路加到每秒 400 筆，門檻破了就停"
         type: choice
         options: [load, stress]
         default: load
