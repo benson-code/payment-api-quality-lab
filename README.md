@@ -30,11 +30,12 @@
 2. [被測系統](#2-被測系統)
 3. [測試策略：為什麼是這些案例](#3-測試策略為什麼是這些案例)
 4. [Postman 與 Newman](#4-postman-與-newman)
-5. [本機執行](#5-本機執行)
-6. [CI](#6-ci)
-7. [AI 輔助開發流程](#7-ai-輔助開發流程)
-8. [開發過程中抓到的問題](#8-開發過程中抓到的問題)
-9. [English summary](#9-english-summary)
+5. [壓力測試（k6）](#5-壓力測試k6)
+6. [本機執行](#6-本機執行)
+7. [CI](#7-ci)
+8. [AI 輔助開發流程](#8-ai-輔助開發流程)
+9. [開發過程中抓到的問題](#9-開發過程中抓到的問題)
+10. [English summary](#10-english-summary)
 
 ---
 
@@ -67,9 +68,14 @@ payment-api-quality-lab/
 │   ├── local.postman_environment.json
 │   ├── data/amount-boundaries.csv   金額邊界，資料驅動
 │   └── run-newman.sh          起 API → 跑 Newman → 出報告
+├── load/                      k6 壓力測試（只在 CI 跑）
+│   ├── payments.js            smoke／load／stress 三種情境
+│   ├── run-load.sh            起 API → k6 → 壓完對帳
+│   └── README.md              效能測試的類型、門檻的理由、數字代表什麼
 ├── tools/
 │   ├── fault_check.py         逐一打開 bug 開關，確認指定的 pytest 測試會失敗
-│   └── newman_fault_check.py  同上，對象是 Postman collection
+│   ├── newman_fault_check.py  同上，對象是 Postman collection
+│   └── check_invariants.py    對帳：對一個資料庫跑全部不變式（壓測後用）
 └── .github/workflows/ci.yml
 ```
 
@@ -195,7 +201,25 @@ BASE_URL=http://127.0.0.1:8400 postman/run-newman.sh   # 打一台已經起好�
 `transfer_not_atomic` 打開時，PM-24「轉給不存在的錢包」照樣回 404，只看狀態碼會以為沒事；
 要靠 PM-25 再查一次餘額才抓得到。
 
-## 5. 本機執行
+## 5. 壓力測試（k6）
+
+`load/payments.js`：80% 付款、20% 查餘額，10% 的付款用同一把 Idempotency-Key 重送。
+用 arrival-rate 固定每秒送出的筆數，伺服器變慢時壓力不會自動減輕。
+
+- **load**：每秒 20 筆 × 1 分鐘，門檻是錯誤率 < 1%、付款 p95 < 500 ms、查餘額 p95 < 300 ms
+- **stress**：每秒 20 筆一路加到 400 筆，門檻被突破就停，回報停在多少負載。
+  實測跑完全部階段都沒被突破：每秒 400 筆以內付款 p95 4 ms，極限沒有測出來
+  （為什麼沒有再往上加，見 `load/README.md`）
+
+**壓完一定對帳。** `tools/check_invariants.py` 對壓測用的資料庫跑 8 條規則，
+沒過就失敗，stress 也一樣：可以撐不住，不能算錯錢。其中一條是壓測才加的
+「每筆付款都有對應的 Idempotency-Key」：重複扣款時帳是平的（每筆付款都有 ledger），
+原本 7 條全部通過，只有這一條抓得到。
+
+只在 CI 手動觸發（Actions → Load test）。情境設計、門檻理由、實測結果見
+[`load/README.md`](load/README.md)。
+
+## 6. 本機執行
 
 開發環境是 Oracle Cloud 的 Ubuntu ARM64（Ampere A1），不用 Docker。需要 Python 3.12。
 
@@ -224,7 +248,7 @@ BUGS=race DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400   # 開�
 > 會把 `/tmp/x.db` 當成測試路徑來決定專案根目錄，結果找不到 `pytest.ini` 與 `conftest.py`，
 > 自訂參數全部變成「不認識」。
 
-## 6. CI
+## 7. CI
 
 `.github/workflows/ci.yml`，每次 push 都跑三個 job：
 
@@ -235,12 +259,14 @@ BUGS=race DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400   # 開�
 3. **Postman collection (Newman)**：跑主流程與 CSV 金額邊界，上傳 htmlextra 與 JUnit 報告，
    再用 `tools/newman_fault_check.py` 對 collection 做同樣的 bug 開關檢查
 
+另外有一個只能手動觸發的 `load.yml`：k6 壓測加上壓完對帳（見第 5 節）。
+
 `race` 會讓哪些測試失敗跟執行時機有關（本機 6 個、CI 上 5 個），所以 fault_check 只要求
 每次都穩定抓得到的 CON-001 與「餘額 = ledger」。
 
 CI 跑在 GitHub 的 ARM64 runner（`ubuntu-24.04-arm`），跟開發機（OCI Ampere）同架構：本機過、CI 也過，不會卡在架構差異。
 
-## 7. AI 輔助開發流程
+## 8. AI 輔助開發流程
 
 這個專案是我用 **Claude Code**（在 OCI 主機上執行的 AI coding agent）協作完成的。我的背景是
 十年支付系統的手工測試，這個 repo 是我轉型 SDET 的練習。分工如下：
@@ -255,7 +281,7 @@ CI 跑在 GitHub 的 ARM64 runner（`ubuntu-24.04-arm`），跟開發機（OCI A
 **我怎麼確認 AI 寫的測試是有效的**：不相信「測試全綠」。被測系統裡埋了 bug 開關，
 每個開關打開後，指定的測試必須失敗，CI 每次都自動檢查。開發過程中這個做法真的抓到了問題（見下一節）。
 
-## 8. 開發過程中抓到的問題
+## 9. 開發過程中抓到的問題
 
 這些都記錄在 commit 訊息裡：
 
@@ -264,10 +290,11 @@ CI 跑在 GitHub 的 ARM64 runner（`ubuntu-24.04-arm`），跟開發機（OCI A
 | 查餘額偶爾回 500 | 寫完付款 API 手動跑併發情境 | FastAPI 可能在不同執行緒開、關同一條 SQLite 連線，關掉 `check_same_thread` |
 | 「空的 Idempotency-Key」測試根本沒送出空 key | 測試失敗，追到 client 層 | `key or new_key()` 把空字串當成沒給，改成只有 `None` 才自動產生 |
 | 浮點數 bug 開關沒有現形 | 打開 `float_math`，精度測試仍是綠的 | 33.33 剛好不會出錯，改用實測會出錯的 19.99 等值 |
-| 自訂參數「不認識」 | 本機排練 CI 指令 | 改用 `--opt=value` 寫法（見第 5 節） |
+| 自訂參數「不認識」 | 本機排練 CI 指令 | 改用 `--opt=value` 寫法（見第 6 節） |
+| 重複扣款時，7 條資料庫不變式全部通過 | 打開 `no_idempotency` 跑 k6，k6 的重送檢查紅了，對帳卻是綠的 | 帳是平的，只是客人被扣了兩次。新增「每筆付款都有對應的 Idempotency-Key」 |
 | Newman 送出的金額跟 CSV 寫的不一樣 | 「科學記號 1e3 應該被拒絕」的案例拿到 201 | Newman 會把沒加引號的 CSV 欄位轉成數字：`1e3` 送出去變成 `1000`、`10.50` 變成 `10.5`。金額欄位一律加引號 |
 
-## 9. English summary
+## 10. English summary
 
 **payment-api-quality-lab** is a self-built practice project, not production work: a small
 FastAPI + SQLite wallet/payment API and a pytest suite aimed at the failures that matter in
@@ -289,7 +316,12 @@ payment, rounding errors, and half-completed transfers.
   CSV-driven amount boundaries as a Postman collection, run by Newman in CI. A separate fault
   check proves the collection catches five of the six planted defects; the race condition is left
   to pytest, since Postman sends one request at a time.
-- **CI**: GitHub Actions starts the API, runs smoke then the full suite, runs the Newman
+- **Load testing (k6)**: load (fixed arrival rate with thresholds on error rate and p95) and
+  stress (ramp to 400 requests/s, stopping if thresholds break) scenarios, 10% of payments
+  retried with the same key. On the CI runner the stress run reached 400/s without breaking a
+  threshold (payment p95 4 ms), so the limit was not found. Every run ends with a database
+  reconciliation; a stress run may break thresholds but never the money. Run manually in CI only.
+- **CI**: GitHub Actions on ARM64 runners starts the API, runs smoke then the full suite, runs the Newman
   collection, and uploads pytest-html, htmlextra and JUnit reports as artifacts.
 - **AI-assisted**: built with Claude Code. I set the requirements and reviewed the test list;
   Claude Code drafted and wrote the code; every step was run and explained before moving on.
