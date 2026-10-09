@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { ApiError, api } from '../api.js';
+import Header from '../Header.jsx';
+import Icon from '../Icon.jsx';
 import { messageFor } from '../messages.js';
 import { go } from '../router.js';
 
@@ -25,29 +27,35 @@ export default function Start() {
   }
 
   return (
-    <main className="screen">
-      <h1>Wallet</h1>
-      <p className="note">Practice project: no real money, no login.</p>
+    <>
+      <Header title="Wallet" />
+      <main className="screen">
+        <section className="hero">
+          <span className="hero-icon"><Icon name="wallet" size={32} /></span>
+          <h1>Wallet</h1>
+          <p className="note">A practice project: no real money, no login.</p>
+        </section>
 
-      <form onSubmit={(e) => { e.preventDefault(); run(() => api.createWallet(owner)); }}>
-        <h2>New wallet</h2>
-        <label htmlFor="owner">Your name</label>
-        <input id="owner" data-testid="owner-input" value={owner} autoComplete="off"
-               onChange={(e) => setOwner(e.target.value)} />
-        <button type="submit" data-testid="create-wallet" disabled={busy}>Create wallet</button>
-      </form>
+        <form className="card" onSubmit={(e) => { e.preventDefault(); run(() => api.createWallet(owner)); }}>
+          <h2>New wallet</h2>
+          <label htmlFor="owner">Your name</label>
+          <input id="owner" data-testid="owner-input" value={owner} autoComplete="off"
+                 placeholder="e.g. Alex" onChange={(e) => setOwner(e.target.value)} />
+          <button type="submit" data-testid="create-wallet" disabled={busy}>Create wallet</button>
+        </form>
 
-      <form onSubmit={(e) => { e.preventDefault(); run(() => api.getWallet(walletId.trim())); }}>
-        <h2>Existing wallet</h2>
-        <label htmlFor="wallet-id">Wallet ID</label>
-        <input id="wallet-id" data-testid="wallet-id-input" value={walletId} autoComplete="off"
-               onChange={(e) => setWalletId(e.target.value)} />
-        <button type="submit" className="secondary" data-testid="open-wallet" disabled={busy}>Open wallet</button>
-      </form>
+        <form className="card" onSubmit={(e) => { e.preventDefault(); run(() => api.getWallet(walletId.trim())); }}>
+          <h2>Existing wallet</h2>
+          <label htmlFor="wallet-id">Wallet ID</label>
+          <input id="wallet-id" data-testid="wallet-id-input" value={walletId} autoComplete="off"
+                 placeholder="w_…" onChange={(e) => setWalletId(e.target.value)} />
+          <button type="submit" className="secondary" data-testid="open-wallet" disabled={busy}>Open wallet</button>
+        </form>
 
-      <div aria-live="polite">
-        {error && <p className="message error" data-testid="error-message">{error}</p>}
-      </div>
-    </main>
+        <div aria-live="polite">
+          {error && <p className="message error" data-testid="error-message">{error}</p>}
+        </div>
+      </main>
+    </>
   );
 }

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import AmountForm from '../AmountForm.jsx';
 import { api } from '../api.js';
+import Header from '../Header.jsx';
+import Icon from '../Icon.jsx';
 import { displayAmount } from '../money.js';
 import { go } from '../router.js';
 import { useLoad } from './useLoad.js';
@@ -29,41 +31,48 @@ export default function Amount({ walletId, mode }) {
   if (result) {
     const { data, replayed } = result;
     return (
-      <main className="screen">
-        <h1>{mode === 'pay' ? 'Payment done' : 'Top-up done'}</h1>
-        <section className="result" data-testid="result" aria-live="polite">
-          <p><span data-testid="result-amount">{displayAmount(data.amount)}</span> TWD</p>
-          <p>New balance <span data-testid="result-balance">{displayAmount(data.balance_after ?? data.balance)}</span> TWD</p>
-          {replayed && (
-            <p className="message info" data-testid="replayed">
-              This payment had already gone through. You were not charged again.
-            </p>
+      <>
+        <Header title={m.title} />
+        <main className="screen">
+          <section className="result" data-testid="result" aria-live="polite">
+            <span className="result-icon"><Icon name="check" size={36} /></span>
+            <h1>{mode === 'pay' ? 'Payment done' : 'Top-up done'}</h1>
+            <p className="result-amount"><span data-testid="result-amount">{displayAmount(data.amount)}</span> TWD</p>
+            <p className="note">New balance <span data-testid="result-balance">{displayAmount(data.balance_after ?? data.balance)}</span> TWD</p>
+            {replayed && (
+              <p className="message info" data-testid="replayed">
+                This payment had already gone through. You were not charged again.
+              </p>
+            )}
+          </section>
+          <button type="button" data-testid="done" onClick={() => go(`/w/${walletId}`)}>Back to wallet</button>
+          {mode === 'pay' && (
+            <button type="button" className="secondary" data-testid="view-payment"
+                    onClick={() => go(`/w/${walletId}/p/${data.payment_id}`)}>View payment</button>
           )}
-        </section>
-        {mode === 'pay' && (
-          <button type="button" className="secondary" data-testid="view-payment"
-                  onClick={() => go(`/w/${walletId}/p/${data.payment_id}`)}>View payment</button>
-        )}
-        <button type="button" data-testid="done" onClick={() => go(`/w/${walletId}`)}>Back to wallet</button>
-      </main>
+        </main>
+      </>
     );
   }
 
   return (
-    <main className="screen">
-      <p className="back"><a href={`#/w/${walletId}`} data-testid="back">Back</a></p>
-      <h1>{m.title}</h1>
-      {wallet && (
-        <p className="note">Balance <span data-testid="balance">{displayAmount(wallet.balance)}</span> {wallet.currency}</p>
-      )}
-      <AmountForm
-        inputId="amount"
-        label="Amount (TWD)"
-        submitLabel={m.submitLabel}
-        idempotent={m.idempotent}
-        send={(amount, key) => m.send(walletId, amount, key)}
-        onDone={setResult}
-      />
-    </main>
+    <>
+      <Header title={m.title} back={`#/w/${walletId}`} />
+      <main className="screen">
+        {wallet && (
+          <p className="available">
+            Available <span data-testid="balance">{displayAmount(wallet.balance)}</span> {wallet.currency}
+          </p>
+        )}
+        <AmountForm
+          inputId="amount"
+          label="Amount"
+          submitLabel={m.submitLabel}
+          idempotent={m.idempotent}
+          send={(amount, key) => m.send(walletId, amount, key)}
+          onDone={setResult}
+        />
+      </main>
+    </>
   );
 }

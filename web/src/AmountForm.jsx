@@ -59,7 +59,7 @@ export default function AmountForm({ label, submitLabel, idempotent, send, onDon
   const pending = state.kind === 'pending';
   return (
     <form
-      className="amount-form"
+      className="card amount-form"
       onSubmit={(e) => {
         e.preventDefault();
         submit();
@@ -68,17 +68,20 @@ export default function AmountForm({ label, submitLabel, idempotent, send, onDon
       <label htmlFor={inputId}>{label}</label>
       {/* Text, not type="number": a number input hands the value over as a float. The amount stays
           the string the user typed, and the API parses it into integer cents. */}
-      <input
-        id={inputId}
-        data-testid="amount-input"
-        type="text"
-        inputMode="decimal"
-        autoComplete="off"
-        placeholder="0.00"
-        value={amount}
-        onChange={(e) => edit(e.target.value)}
-        disabled={pending}
-      />
+      <div className="amount-field">
+        <input
+          id={inputId}
+          data-testid="amount-input"
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          placeholder="0.00"
+          value={amount}
+          onChange={(e) => edit(e.target.value)}
+          disabled={pending}
+        />
+        <span className="suffix">TWD</span>
+      </div>
       <button type="submit" data-testid="submit" disabled={pending}>
         {pending ? 'Processing…' : submitLabel}
       </button>
