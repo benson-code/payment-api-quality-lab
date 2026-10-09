@@ -1,101 +1,116 @@
-# 壓力測試（k6）
+# Load testing (k6)
 
-功能測試回答「對不對」，效能測試回答「在多少負載下還對、還夠快」。
-支付系統再多一個要求：**壓完要對帳。回應再快，帳算錯就是沒過。**
+Functional tests answer whether the system is correct. Performance tests answer how much load it can
+take while staying correct and fast enough. A payment system adds one requirement: **reconcile the
+database after every run. A fast response with wrong balances is a failure.**
 
-## 四種效能測試
+## Types of performance test
 
-| 類型 | 問的問題 | 做法 | 本專案 |
+| Type | Question | Method | This project |
 |---|---|---|---|
-| 負載測試（load） | 平常的量撐得住嗎？ | 固定在預期的流量，跑一段時間，看門檻 | ✅ `SCENARIO=load` |
-| 壓力測試（stress） | 極限在哪？撐不住時會怎樣？ | 一路加壓，直到門檻被突破 | ✅ `SCENARIO=stress` |
-| 尖峰測試（spike） | 流量突然暴增（例如整點搶購）會怎樣？ | 從低流量瞬間跳到高流量 | ❌ 沒做 |
-| 長時間測試（soak） | 跑幾個小時會不會漏記憶體、越來越慢？ | 中等流量跑很久 | ❌ 沒做：免費 CI 不適合跑數小時 |
+| Load | Does it handle the expected traffic? | Hold the expected rate for a period and check the thresholds | ✅ `SCENARIO=load` |
+| Stress | Where is the limit, and what happens beyond it? | Increase the load until a threshold breaks | ✅ `SCENARIO=stress` |
+| Spike | What happens when traffic jumps suddenly (for example, a flash sale)? | Jump from low to high traffic instantly | ❌ Not covered |
+| Soak | Does it leak memory or slow down over several hours? | Moderate traffic for a long time | ❌ Not covered: free CI runners are not suited to multi-hour runs |
 
-## 這裡做了什麼
+## What the test does
 
-`load/payments.js`：
+`load/payments.js`:
 
-- **流量組成**：80% 付款、20% 查餘額，打 20 個事先儲值好的錢包。
-- **重送**：10% 的付款會用同一把 Idempotency-Key 再送一次，模擬「逾時後客戶端重試」。
-  每次重送都要回原本那筆付款（同一個 `payment_id`、`Idempotent-Replayed: true`）。
-- **用 arrival-rate，不用固定使用者數**：每秒送出固定筆數，不管伺服器回得多慢。
-  固定使用者數的模式下，伺服器變慢時送出的請求也跟著變少，壓力反而自動減輕，會掩蓋問題；
-  真實的客人不會因為系統慢就少來。來不及送出的請求會記成 `dropped_iterations`。
+- **Traffic mix**: 80% payments and 20% balance reads against 20 wallets funded in advance.
+- **Retries**: 10% of payments are sent a second time with the same Idempotency-Key, simulating a
+  client retry after a timeout. Each retry must return the original payment (the same `payment_id`
+  and `Idempotent-Replayed: true`).
+- **Arrival rate rather than a fixed number of users**: a fixed number of requests is sent every
+  second, however slowly the server responds. With a fixed number of virtual users, each user waits
+  for a response before sending the next request, so a slower server automatically receives less
+  load, which hides the problem; real customers do not arrive less often because the system is slow.
+  Requests that cannot be sent in time are counted as `dropped_iterations`.
 
-| 情境 | 負載 | 門檻沒過時 |
+| Scenario | Load | When a threshold breaks |
 |---|---|---|
-| smoke | 1 個使用者跑 5 次 | 失敗。只用來確認腳本本身沒壞，本機可以跑 |
-| load | 每秒 20 筆，1 分鐘 | 失敗 |
-| stress | 每秒 20 → 50 → 100 → 200 → 400 筆，每階段 1 分鐘 | 停止加壓：停下時的負載就是極限。跑完全部階段都沒破，代表極限在每秒 400 筆以上 |
+| smoke | 1 virtual user, 5 iterations | The run fails. Used only to check that the script works; safe to run locally |
+| load | 20 requests per second for 1 minute | The run fails |
+| stress | 20 → 50 → 100 → 200 → 400 requests per second, 1 minute per stage | The ramp stops, and the load at that point is the limit. If every stage completes, the limit is above 400 requests per second |
 
-## 門檻
+## Thresholds
 
-| 門檻 | 值 | 理由 |
+| Threshold | Value | Rationale |
 |---|---|---|
-| 錯誤率 | < 1% | 正常負載下不應該有任何錯誤；留 1% 給 runner 偶發狀況 |
-| 付款 p95 | < 500 ms | 付款要寫入、要鎖，比查詢慢 |
-| 查餘額 p95 | < 300 ms | 只讀，應該明顯比付款快 |
-| 檢查通過率 | > 99% | 包含「重送回同一筆付款」，這條不能錯 |
+| Error rate | < 1% | Normal load should produce no errors; 1% allows for occasional runner noise |
+| Payment p95 | < 500 ms | Payments write and take a lock, so they are slower than reads |
+| Balance-read p95 | < 300 ms | Read-only, so clearly faster than a payment |
+| Check pass rate | > 99% | Includes "a retry returns the original payment", which must not fail |
 
-看 p95 而不是平均：平均值會被大量快速的請求拉低，看不出那 5% 等很久的客人。
+p95 is used instead of the average because a large number of fast requests pulls the average down
+and hides the slowest 5% of customers.
 
-## 壓完要對帳
+## Reconciliation after every run
 
-`load/run-load.sh` 每次壓完都會跑 `tools/check_invariants.py`，查 8 條「應該查不到任何資料」的規則：
-7 條跟 pytest 的資料庫測試共用（餘額 = ledger 加總、沒有負餘額、退款不超過付款⋯⋯），
-另外 1 條是壓測才加的：**每一筆付款都要有對應的 Idempotency-Key**。
+After every run, `load/run-load.sh` runs `tools/check_invariants.py`, which checks eight rules, each
+written as a query that must return no rows. Seven are shared with the pytest database tests (balance
+equals the ledger sum, no negative balances, refunds do not exceed the payment, and so on). The eighth
+was added for the load test: **every payment has a matching Idempotency-Key**.
 
-為什麼要多這一條：打開 `no_idempotency` 這個 bug 跑壓測，重送會變成重複扣款，
-但原本 7 條全部通過，因為每一筆付款都有自己的 ledger，帳是平的。帳平不代表錢對：
-客人被扣了兩次，每一筆都記得清清楚楚。
+The reason for the eighth rule: with the `no_idempotency` defect on, retries become duplicate charges,
+yet the original seven rules all pass, because each duplicated payment has its own ledger entry and
+the books balance. Balanced books do not mean correct charges: the customer was charged twice, and
+both charges are recorded accurately.
 
 ```
 balance_equals_ledger            OK
 ...
 no_orphan_transfer_entries       OK
 payments_have_idempotency_keys   BROKEN (1 rows)
-    (6, 0)                       ← 6 筆付款，0 把 key
+    (6, 0)                       <- 6 payments, 0 keys
 ```
 
-**不管哪個情境，對帳沒過一律失敗。** stress 情境可以突破門檻，但不能算錯錢。
+**A failed reconciliation fails the run in every scenario.** A stress run may break its thresholds,
+but never the balances.
 
-## 數字代表什麼
+## What the numbers mean
 
-被測系統是單一 uvicorn worker 加上 SQLite，CI 跑在 GitHub 的免費 runner。
-這裡測出來的數字**只代表這個練習系統在這台 runner 上的表現，不代表任何正式環境的容量**。
+The system under test is a single uvicorn worker with SQLite, and CI runs on GitHub's free runners.
+The numbers measured here **describe only this practice system on that runner, not the capacity of
+any production environment**.
 
-這些數字的用途是**比較**：同樣的腳本、同樣的 runner，改了程式之後 p95 明顯變差，
-就可能是效能退化。但 runner 本身的起伏就可能有好幾倍（見下面的實測），單跑一次不能下結論，
-要多跑幾次再比。重點在方法：情境怎麼設計、門檻怎麼訂、壓完怎麼驗證資料正確。
+They are useful for **comparison**: with the same script on the same runner, a clearly worse p95 after
+a code change may indicate a performance regression. However, the runner itself can vary by several
+times (see the results below), so a single run is not conclusive; compare several runs. The point of
+this test is the method: how the scenarios are designed, how the thresholds are set, and how data
+correctness is verified afterwards.
 
-## 實測結果
+## Results
 
-2026-10-05，GitHub ARM64 runner（`ubuntu-24.04-arm`），同一個 commit 手動觸發三次：
+GitHub ARM64 runner (`ubuntu-24.04-arm`), three manual runs of the same commit on 2026-10-05:
 
-| 情境 | 請求數 | 失敗率 | 付款 p95 | 查餘額 p95 | 重送 | dropped | 壓完對帳 |
+| Scenario | Requests | Failure rate | Payment p95 | Balance-read p95 | Retries | Dropped | Reconciliation |
 |---|---|---|---|---|---|---|---|
-| load（第 1 次） | 1,330 | 0% | 19 ms | 2 ms | 89 | 0 | 8 條全過（964 筆付款） |
-| load（第 2 次） | 1,347 | 0% | 3 ms | 2 ms | 106 | 0 | 8 條全過（969 筆付款） |
-| stress | 36,313 | 0% | 4 ms | 2 ms | 2,674 | 0 | 8 條全過（26,746 筆付款） |
+| load (run 1) | 1,330 | 0% | 19 ms | 2 ms | 89 | 0 | All 8 rules pass (964 payments) |
+| load (run 2) | 1,347 | 0% | 3 ms | 2 ms | 106 | 0 | All 8 rules pass (969 payments) |
+| stress | 36,313 | 0% | 4 ms | 2 ms | 2,674 | 0 | All 8 rules pass (26,746 payments) |
 
-**stress 沒有找到極限。** 四個階段全部跑完，加到每秒 400 筆，門檻一條都沒被突破。
-能說的只有「每秒 400 筆以內撐得住，付款 p95 4 ms」，極限在哪裡沒有測出來。
+**The stress run did not find the limit.** All four stages completed, up to 400 requests per second,
+without breaking a threshold. The supported conclusion is only that the system handles up to 400
+requests per second with a payment p95 of 4 ms; where the limit lies was not measured.
 
-沒有再往上加，是因為 k6 和 API 跑在同一台 runner 上，互相搶 CPU。再加上去，先吃不消的
-可能是 k6 自己（送不出去的請求會記成 dropped），量到的是 runner 的極限，不是 API 的。
-要測出真正的極限，壓測機和被測系統要分開。
+The load was not raised further because k6 and the API run on the same runner and compete for CPU.
+At higher rates, k6 itself may become the bottleneck (requests it cannot send are counted as dropped),
+so the measurement would reflect the runner's limit rather than the API's. Measuring the real limit
+requires running the load generator and the system under test on separate machines.
 
-**兩次 load 的付款 p95 差了 6 倍**（19 ms 和 3 ms），負載高得多的 stress 反而只有 4 ms。
-程式是同一個 commit，差異來自執行環境。這就是上面說「單跑一次不能下結論」的原因。
+**The two load runs differ sixfold in payment p95** (19 ms and 3 ms), while the far heavier stress run
+measured 4 ms. All three runs used the same commit, so the difference comes from the execution
+environment. This is why a single run is not conclusive.
 
-## 執行
+## Running
 
 ```bash
-SCENARIO=smoke load/run-load.sh     # 本機：確認腳本沒壞（幾秒鐘）
+SCENARIO=smoke load/run-load.sh     # locally: checks that the script works (a few seconds)
 ```
 
-load 和 stress 只在 CI 跑：GitHub → Actions → **Load test** → Run workflow → 選情境。
-結果直接顯示在那次執行的摘要頁面，原始 JSON 和 API log 在 artifact 裡。
+The load and stress scenarios run only in CI: GitHub → Actions → **Load test** → Run workflow →
+choose a scenario. Results appear on the run's summary page; the raw JSON and the API log are uploaded
+as an artifact.
 
-不在本機壓：開發機是共用的，上面還有其他服務在跑。
+The load test is not run on the development machine, which is shared with other services.

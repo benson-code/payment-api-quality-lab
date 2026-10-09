@@ -2,326 +2,325 @@
 
 [![CI](https://github.com/benson-code/payment-api-quality-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/benson-code/payment-api-quality-lab/actions/workflows/ci.yml)
 
-> **這是自建模擬系統的練習作品，不是正式工作專案。** 被測的錢包／支付 API 是為了練習測試而寫的，
-> 不連任何真實金流。
+> **Self-built practice project, not production work.** The wallet/payment API under test was written
+> for this project as a target for testing. It is not connected to any real payment system.
 
-用 pytest 測一個自建的錢包／支付 API，重點放在支付系統真正會出事的地方：
-**重複扣款、併發超扣、退款超額、金額精度、轉帳只做一半。**
+A pytest suite for a small wallet/payment API, focused on the failures that cost money in payment
+systems: **double charges on retry, overdrafts under concurrency, refunds that exceed the original
+payment, rounding errors, and half-completed transfers.**
 
-主流程另外做成 **Postman collection**，可以匯入 Postman 手動操作，也用 **Newman** 在 CI 自動執行。
+The main flows are also provided as a **Postman collection** for manual use, run by **Newman** in CI.
+A **k6** load test, followed by a database reconciliation, can be triggered on demand.
 
-和一般 API 測試練習不同的地方：**被測系統裡埋了 6 個可以開關的 bug，CI 每次都會逐一打開，
-確認對應的測試真的會變紅。** 一個從來沒紅過的測試，不能證明它有在測東西。
+**Six defects are planted in the API behind switches. On every push to main, CI turns each one on and
+requires the tests assigned to it to fail.** A test that has never been seen to fail is not
+evidence that it checks anything.
 
-| 風險 | 代表案例 | 埋的 bug（打開後這些測試必須失敗） |
+| Risk | Representative cases | Planted defect (these tests must fail when it is on) |
 |---|---|---|
-| 網路逾時後重送，重複扣款 | IDM-001、CON-002 | `no_idempotency`：不檢查 Idempotency-Key |
-| 同時扣款，餘額被扣成負數 | CON-001、DB-001 | `race`：扣款沒有鎖 |
-| 分次退款，累計超過原付款 | REF-002、CON-003 | `refund_overflow`：只檢查單筆退款 |
-| 負數付款等於幫自己加錢 | VAL-P08、VAL-T08 | `negative_amount`：允許負數 |
-| 用浮點數算錢，少一分錢 | PRC-005 | `float_math`：19.99 × 100 = 1998.9999… |
-| 轉帳扣了款卻沒入帳 | TRF-006、DB-001 | `transfer_not_atomic`：扣款與入帳分兩個交易 |
+| A retry after a network timeout charges twice | IDM-001, CON-002 | `no_idempotency`: the Idempotency-Key is ignored |
+| Concurrent payments overdraw the wallet | CON-001, DB-001 | `race`: no lock around the balance update |
+| Partial refunds add up to more than the payment | REF-002, CON-003 | `refund_overflow`: only the individual refund is checked |
+| A negative payment credits the payer | VAL-P08, VAL-T08 | `negative_amount`: negative amounts are accepted |
+| Floating-point arithmetic loses a cent | PRC-005 | `float_math`: 19.99 × 100 = 1998.9999… |
+| A transfer debits the sender but never credits the receiver | TRF-006, DB-001 | `transfer_not_atomic`: debit and credit run in separate transactions |
 
 ---
 
-## 目錄
+## Contents
 
-1. [架構](#1-架構)
-2. [被測系統](#2-被測系統)
-3. [測試策略：為什麼是這些案例](#3-測試策略為什麼是這些案例)
-4. [Postman 與 Newman](#4-postman-與-newman)
-5. [壓力測試（k6）](#5-壓力測試k6)
-6. [本機執行](#6-本機執行)
+1. [Architecture](#1-architecture)
+2. [System under test](#2-system-under-test)
+3. [Test strategy](#3-test-strategy)
+4. [Postman and Newman](#4-postman-and-newman)
+5. [Load testing (k6)](#5-load-testing-k6)
+6. [Running locally](#6-running-locally)
 7. [CI](#7-ci)
-8. [AI 輔助開發流程](#8-ai-輔助開發流程)
-9. [開發過程中抓到的問題](#9-開發過程中抓到的問題)
-10. [English summary](#10-english-summary)
+8. [AI-assisted development](#8-ai-assisted-development)
+9. [Issues found during development](#9-issues-found-during-development)
 
 ---
 
-## 1. 架構
+## 1. Architecture
 
 ```
 payment-api-quality-lab/
-├── app/                       被測系統：FastAPI + SQLite
-│   ├── main.py                HTTP 路由、統一錯誤格式
-│   ├── service.py             商業規則（付款、退款、轉帳、冪等）
-│   ├── money.py               金額：字串 ⇄ 整數「分」
-│   ├── db.py                  建表、交易（BEGIN IMMEDIATE）
-│   └── bugs.py                埋 bug 開關
-├── framework/                 ① API client 層
-│   ├── base_client.py         BaseClient：base URL、timeout、log
-│   ├── wallet_api.py          每支 API 一個方法
-│   └── db.py                  直接查 SQLite：準備資料、7 條資料庫不變式
-├── testdata/                  ② 測試資料層
-│   ├── schemas/*.json         jsonschema 回應格式
-│   ├── schema.py              驗證並列出每一個不符合的欄位
-│   ├── factories.py           產生錢包、付款的工廠函式
-│   └── cases.py               讀 CSV，case_id／marks／is_run 都在資料裡
+├── app/                       System under test: FastAPI + SQLite
+│   ├── main.py                HTTP routes, uniform error format
+│   ├── service.py             Business rules (payments, refunds, transfers, idempotency)
+│   ├── money.py               Amounts: string <-> integer cents
+│   ├── db.py                  Schema, transactions (BEGIN IMMEDIATE)
+│   └── bugs.py                Planted-defect switches
+├── framework/                 (1) API client layer
+│   ├── base_client.py         BaseClient: base URL, timeout, request logging
+│   ├── wallet_api.py          One method per endpoint
+│   └── db.py                  Direct SQLite access: data seeding, seven database invariants
+├── testdata/                  (2) Test data layer
+│   ├── schemas/*.json         JSON Schemas for every response type
+│   ├── schema.py              Validation that reports every mismatching field
+│   ├── factories.py           Factory functions for wallets and payments
+│   └── cases.py               CSV loader; case_id, marks and is_run live in the data
 ├── cases/
-│   └── amount_validation.csv  金額格式案例（30 個，一列一個）
-├── tests/                     ③ 測試案例層
-│   ├── conftest.py            起 API、fixture、--env／--target_case_ids／--target_marks
-│   └── test_*.py              95 個測試
-├── postman/                   Postman collection（Newman 在 CI 跑）
+│   └── amount_validation.csv  Amount-format cases (30, one per row)
+├── tests/                     (3) Test case layer
+│   ├── conftest.py            API startup, fixtures, --env / --target_case_ids / --target_marks
+│   └── test_*.py              95 tests
+├── postman/                   Postman collection (run by Newman in CI)
 │   ├── payment-api.postman_collection.json
 │   ├── local.postman_environment.json
-│   ├── data/amount-boundaries.csv   金額邊界，資料驅動
-│   └── run-newman.sh          起 API → 跑 Newman → 出報告
-├── load/                      k6 壓力測試（只在 CI 跑）
-│   ├── payments.js            smoke／load／stress 三種情境
-│   ├── run-load.sh            起 API → k6 → 壓完對帳
-│   └── README.md              效能測試的類型、門檻的理由、數字代表什麼
+│   ├── data/amount-boundaries.csv   Data-driven amount boundaries
+│   └── run-newman.sh          Start the API, run Newman, write reports
+├── load/                      k6 load test (run in CI only)
+│   ├── payments.js            smoke / load / stress scenarios
+│   ├── run-load.sh            Start the API, run k6, reconcile the database
+│   └── README.md              Test types, threshold rationale, measured results
 ├── tools/
-│   ├── fault_check.py         逐一打開 bug 開關，確認指定的 pytest 測試會失敗
-│   ├── newman_fault_check.py  同上，對象是 Postman collection
-│   └── check_invariants.py    對帳：對一個資料庫跑全部不變式（壓測後用）
-└── .github/workflows/ci.yml
+│   ├── fault_check.py         Turns on each planted defect and checks the named pytest tests fail
+│   ├── newman_fault_check.py  The same check for the Postman collection
+│   └── check_invariants.py    Reconciliation: runs every invariant against a database (after load tests)
+└── .github/workflows/         ci.yml (push to main, pull requests), load.yml (manual)
 ```
 
-**分層的理由**：測試案例只寫「做什麼、預期什麼」，不管 URL 長什麼樣、header 怎麼帶。
-API 路徑改了只改 client 層；金額格式案例要加，只改 CSV。
+**Why three layers:** test cases state only what is done and what is expected; they do not deal with
+URLs or headers. A change to an API path touches only the client layer, and a new amount format is a
+single CSV row.
 
-## 2. 被測系統
+Code comments, test docstrings, Postman request names and the k6 run summary are written in
+Traditional Chinese.
 
-| 方法 | 路徑 | 說明 |
+## 2. System under test
+
+| Method | Path | Description |
 |---|---|---|
-| POST | `/wallets` | 建立錢包 |
-| POST | `/wallets/{id}/topups` | 儲值 |
-| GET | `/wallets/{id}` | 查餘額 |
-| GET | `/wallets/{id}/transactions` | 交易紀錄（ledger） |
-| POST | `/payments` | 付款，必須帶 `Idempotency-Key` |
-| GET | `/payments/{id}` | 付款明細與退款紀錄 |
-| POST | `/payments/{id}/refunds` | 退款，可多次部分退款，必須帶 `Idempotency-Key` |
-| POST | `/transfers` | 錢包之間轉帳，必須帶 `Idempotency-Key` |
-| GET | `/health` | 健康檢查，並回報開了哪些 bug |
+| POST | `/wallets` | Create a wallet |
+| POST | `/wallets/{id}/topups` | Top up a wallet |
+| GET | `/wallets/{id}` | Get the balance |
+| GET | `/wallets/{id}/transactions` | Transaction history (ledger) |
+| POST | `/payments` | Pay; requires an `Idempotency-Key` header |
+| GET | `/payments/{id}` | Payment details, including refunds |
+| POST | `/payments/{id}/refunds` | Refund, fully or in several partial refunds; requires an `Idempotency-Key` header |
+| POST | `/transfers` | Transfer between wallets; requires an `Idempotency-Key` header |
+| GET | `/health` | Health check, including which planted defects are switched on |
 
-**三個設計決定**
+**Design decisions**
 
-1. **金額用字串傳、用整數「分」存。** `"100.50"` → `10050`。JSON 數字到程式裡常變成浮點數，
-   而 `0.1 + 0.2 = 0.30000000000000004`。最多兩位小數，最小 `0.01`。
-2. **所有餘額變動只走一個函式，並同時寫 ledger。** 所以「錢包餘額 = ledger 加總」永遠成立，
-   測試可以用 SQL 直接驗。
-3. **寫入一律在 `BEGIN IMMEDIATE` 交易裡。** 查 Idempotency-Key、扣款、記住 key 三件事一起鎖住：
-   同一把 key 同時到兩次，第二個要等第一個做完才查得到「用過了」。扣款失敗整筆 ROLLBACK，
-   key 不會被記住，客人儲值後可以用同一把 key 再試。
+1. **Amounts travel as strings and are stored as integer cents.** `"100.50"` is stored as `10050`.
+   JSON numbers are commonly parsed into floating-point values, and in floating point
+   `0.1 + 0.2 = 0.30000000000000004`. Amounts have at most two decimal places; the minimum is `0.01`.
+2. **Every balance change goes through a single function, which also writes a ledger entry.**
+   The rule "a wallet's balance equals the sum of its ledger entries" therefore always holds,
+   and the tests verify it directly in SQL.
+3. **Every write runs inside a `BEGIN IMMEDIATE` transaction.** Looking up the Idempotency-Key,
+   debiting the wallet and storing the key happen under one lock, so when two requests arrive with
+   the same key, the second one waits and then finds the first one's result. If the debit fails,
+   the whole transaction is rolled back and the key is not stored, so the client can retry with the
+   same key after topping up.
 
-錯誤一律回 `{"error_code": "...", "message": "..."}`。
+Every error response has the form `{"error_code": "...", "message": "..."}`.
 
-## 3. 測試策略：為什麼是這些案例
+## 3. Test strategy
 
-95 個測試，每一類都先問「這裡壞掉，錢會怎樣」：
+There are 95 tests. Each group starts from the question "if this breaks, what happens to the money?"
 
-| 檔案 | 數量 | 在防什麼 |
+| File | Tests | What it guards against |
 |---|---|---|
-| `test_smoke.py` | 2 | 部署後第一個跑：服務活著、主要金流走得通。加上其他檔案標了 `smoke` 的，smoke 共 4 個 |
-| `test_validation.py` | 40 | 30 個來自 CSV：零、負數、超過兩位小數、科學記號、數字而非字串、空白、null、布林；另有 Idempotency-Key、錢包、owner 驗證 |
-| `test_business.py` | 8 | 餘額剛好用完／差一分；失敗的付款不留任何資料；單筆上限 49,999.99／50,000.00／50,000.01 |
-| `test_precision.py` | 8 | 0.10 + 0.20；33.33 × 2 + 33.34 退回一分不差；最後一分錢；19.99 等浮點數會出錯的值 |
-| `test_idempotency.py` | 7 | 同 key 重送只扣一次；同 key 不同內容拒絕；不同 key 是兩筆合法購買；退款、轉帳重送 |
-| `test_concurrency.py` | 4 | 10 筆同時扣款不超扣；同 key 同時 10 次只扣一次；同時退款不超退；對向轉帳 |
-| `test_refund.py` | 10 | 累計上限、單筆超退、不合法金額、不存在的付款、退款明細 |
-| `test_transfer.py` | 5 | 扣款與入帳要嘛都成功要嘛都沒發生、收款方不存在、轉給自己、限額 |
-| `test_contract.py` | 3 | 每一種成功與錯誤回應都用 jsonschema 驗，不允許多出欄位 |
-| `test_db_invariants.py` | 8 | 7 條「應該查不到任何資料」的 SQL，加上一個證明它們會抓到錯的測試 |
+| `test_smoke.py` | 2 | Run first after a deployment: the service is up and the main money flow works. With the tests in other files marked `smoke`, the smoke set has 4 tests |
+| `test_validation.py` | 40 | 30 from the CSV: zero, negative, more than two decimal places, scientific notation, a number instead of a string, whitespace, null, boolean. Also Idempotency-Key, wallet and owner validation |
+| `test_business.py` | 8 | Paying exactly the balance and one cent more; a failed payment leaves no trace; the single-payment limit at 49,999.99 / 50,000.00 / 50,000.01 |
+| `test_precision.py` | 8 | 0.10 + 0.20; refunds of 33.33 + 33.33 + 33.34 return every cent; the last remaining cent; values such as 19.99 that floating point gets wrong |
+| `test_idempotency.py` | 7 | A retry with the same key charges once; the same key with a different body is rejected; different keys are two legitimate purchases; refund and transfer retries |
+| `test_concurrency.py` | 4 | 10 simultaneous payments never overdraw; 10 simultaneous retries with one key charge once; simultaneous refunds never exceed the payment; opposing transfers |
+| `test_refund.py` | 10 | Cumulative limit, a single refund above the payment, invalid amounts, unknown payments, refund details |
+| `test_transfer.py` | 5 | Debit and credit happen together or not at all; unknown receiver; transfer to oneself; limit |
+| `test_contract.py` | 3 | Every success and error response is validated against a JSON Schema that allows no extra fields |
+| `test_db_invariants.py` | 8 | Seven SQL queries that must return no rows, plus a test proving each query can detect a violation |
 
-**幾個原則**
+**Principles**
 
-- **斷言不只看回應。** 重送測試不是看第二次回什麼，是去查 `payments` 表確認只有一筆。
-  API 說「沒有重複扣款」不算數，帳上只有一筆才算。
-- **從一個合法的請求開始，每次只改一個地方。** 一次改兩個欄位，被拒絕了也不知道是哪一個造成的。
-- **邊界測三個點**：界線內最後一個、剛好界線、界線外第一個。
-- **併發測試驗的是正確性，不是效能。** 每個案例 5～20 個請求，一秒內跑完。壓力測試是另一件事。
-- **一條永遠查不到東西的 SQL，可能是 SQL 寫錯了。** DB-005 把資料庫複製一份、故意弄髒，
-  確認 7 條查詢每一條都抓得到。
-- **測試資料要驗證過才算數。** 原本以為 33.33 會觸發浮點數誤差，實測 `33.33 * 100 == 3333.0`，
-  不會出錯；19.99、1.15、0.29、4.35 才會。沒有埋 bug 開關，這個錯誤不會被發現。
+- **Assertions go beyond the HTTP response.** A retry test does not stop at the second response; it
+  queries the `payments` table and confirms there is exactly one row. The API reporting no double
+  charge is not proof; a single row in the database is.
+- **Start from a valid request and change one field at a time.** If two fields change and the request
+  is rejected, the cause is ambiguous.
+- **Boundaries are tested at three points:** the last valid value, the boundary itself, and the first
+  invalid value.
+- **Concurrency tests check correctness, not performance.** Each case sends 5 to 20 requests and
+  finishes within a second. Performance is covered separately by the load test (section 5).
+- **A query that never returns rows may simply be wrong.** DB-005 copies the database, corrupts it
+  deliberately, and confirms that each of the seven invariant queries detects the corruption.
+- **Test data must be verified.** 33.33 was expected to trigger a floating-point error, but
+  `33.33 * 100 == 3333.0` exactly; 19.99, 1.15, 0.29 and 4.35 do trigger it. Without the planted
+  defect, this mistake in the test data would have gone unnoticed.
 
-**用測試資料挑案例**（跟資料驅動框架的慣例一樣，case_id 與 marks 寫在資料裡）：
+**Selecting cases by test data** (as in data-driven frameworks, case_id and marks are part of the data):
 
 ```bash
-pytest --target_marks=smoke                      # 只跑 smoke
-pytest --target_marks=idempotency,concurrency    # 任一標籤符合
-pytest --target_case_ids=CON-001,VAL-P08         # 指定案例
+pytest --target_marks=smoke                      # smoke tests only
+pytest --target_marks=idempotency,concurrency    # tests with any of these marks
+pytest --target_case_ids=CON-001,VAL-P08         # specific cases
 ```
 
-## 4. Postman 與 Newman
+## 4. Postman and Newman
 
-`postman/` 是同一個 API 的 Postman collection，可以匯入 Postman 手動操作，也可以用 Newman
-在命令列和 CI 執行。
+`postman/` holds a Postman collection for the same API. It can be imported into Postman for manual
+use, and Newman runs it from the command line and in CI.
 
-**跟 pytest 的分工**
+**Division of work with pytest**
 
-| | Postman／Newman | pytest |
+| | Postman / Newman | pytest |
 |---|---|---|
-| 用途 | 開發、PM 匯入就能重現問題；探索式測試、交接 | 自動化回歸的主力 |
-| 涵蓋 | 主流程與代表性錯誤（25 支 request）＋ 金額邊界（CSV 9 列） | 95 個測試 |
-| 做不到的 | 直接查資料庫；併發（一次只送一個請求） | — |
+| Purpose | Lets developers and product managers reproduce issues by importing it; exploratory testing; handover | Primary automated regression suite |
+| Coverage | Main flows and representative errors (25 requests), plus amount boundaries (9 CSV rows) | 95 tests |
+| Cannot do | Query the database; generate concurrency (one request at a time) | — |
 
-**collection 結構**
+**Collection structure**
 
-| 資料夾 | 案例 | 重點 |
+| Folder | Cases | Focus |
 |---|---|---|
-| 01 健康檢查 | PM-01 | 確認沒有打開任何 bug 開關 |
-| 02 主流程 | PM-02～08 | 建錢包 → 儲值 → 付款 → 退款 → 對帳；前一支存下的 ID 給後一支用 |
-| 03 冪等 | PM-09～12 | 同一把 key 重送只扣一次：回應標示 `Idempotent-Replayed: true`，而且餘額沒變 |
-| 04 錯誤處理 | PM-13～18 | 差一分錢的餘額不足、累計超退、金額傳數字、超過單筆上限 |
-| 05 轉帳 | PM-19～25 | 轉帳失敗後再查一次餘額，確認錢沒有被扣 |
-| 06 金額邊界 | AMT-01～09 | 讀 `postman/data/amount-boundaries.csv`，每一列跑一次 |
+| 01 Health check | PM-01 | Confirms no planted defect is switched on |
+| 02 Main flow | PM-02–08 | Create a wallet, top up, pay, refund, reconcile; each request passes saved IDs to the next |
+| 03 Idempotency | PM-09–12 | A retry with the same key charges once: the response is marked `Idempotent-Replayed: true` and the balance is unchanged |
+| 04 Error handling | PM-13–18 | Insufficient balance by one cent, cumulative over-refund, amount sent as a number, single-payment limit exceeded |
+| 05 Transfers | PM-19–25 | After a failed transfer, the balance is read again to confirm nothing was debited |
+| 06 Amount boundaries | AMT-01–09 | Reads `postman/data/amount-boundaries.csv` and runs once per row |
 
-每支 request 都會經過 collection 層的共同檢查：回應時間 < 1 秒、回應是 JSON、錯誤回應格式統一。
-測試名稱一律以案例編號開頭，報告裡可以直接對回案例。
+Every request also runs collection-level checks: response time under 1 second, a JSON response, and
+the uniform error format for error responses. Every test name starts with its case ID, so report
+entries map directly to cases.
 
-**執行**
+**Running**
 
 ```bash
 npm install -g newman@6.2.2 newman-reporter-htmlextra@1.23.1
 
-postman/run-newman.sh                                  # 自己起一台 API（暫存資料庫），跑完就關
-BASE_URL=http://127.0.0.1:8400 postman/run-newman.sh   # 打一台已經起好的 API
-.venv/bin/python tools/newman_fault_check.py           # 證明 collection 抓得到 bug
+postman/run-newman.sh                                  # starts its own API (temporary database) and stops it afterwards
+BASE_URL=http://127.0.0.1:8400 postman/run-newman.sh   # targets an API that is already running
+.venv/bin/python tools/newman_fault_check.py           # proves the collection catches the planted defects
 ```
 
-報告在 `reports/newman/`：`main.html`、`amounts.html`（htmlextra）與 JUnit XML。
+Reports are written to `reports/newman/`: `main.html` and `amounts.html` (htmlextra) and JUnit XML.
 
-在 Postman 裡：匯入 collection 與 `local` 環境後，整個 collection 可以直接 Run（06 沒有資料會自動跳過）；
-要跑 06 時，用 Collection Runner 只選這個資料夾，並選擇上面那個 CSV。
+In Postman, import the collection and the `local` environment; the whole collection can then be run
+directly (folder 06 skips itself when no data file is supplied). To run folder 06, select only that
+folder in the Collection Runner and choose the CSV file above.
 
-**collection 也要證明自己抓得到 bug**
+**The collection must also prove that it catches defects**
 
-| bug 開關 | 必須失敗的案例 |
+| Planted defect | Cases that must fail |
 |---|---|
-| `no_idempotency` | PM-09、PM-10、PM-11 |
+| `no_idempotency` | PM-09, PM-10, PM-11 |
 | `refund_overflow` | PM-15 |
-| `negative_amount` | AMT-05、AMT-06 |
-| `float_math` | AMT-03、AMT-04 |
+| `negative_amount` | AMT-05, AMT-06 |
+| `float_math` | AMT-03, AMT-04 |
 | `transfer_not_atomic` | PM-25 |
-| `race` | 不列入：Postman 造不出併發，交給 pytest |
+| `race` | Excluded: Postman cannot generate concurrency, so this is left to pytest |
 
-`transfer_not_atomic` 打開時，PM-24「轉給不存在的錢包」照樣回 404，只看狀態碼會以為沒事；
-要靠 PM-25 再查一次餘額才抓得到。
+With `transfer_not_atomic` on, PM-24 (transfer to a non-existent wallet) still returns 404, so the
+status code alone suggests nothing is wrong. Only PM-25, which reads the balance again, detects the
+missing money.
 
-## 5. 壓力測試（k6）
+## 5. Load testing (k6)
 
-`load/payments.js`：80% 付款、20% 查餘額，10% 的付款用同一把 Idempotency-Key 重送。
-用 arrival-rate 固定每秒送出的筆數，伺服器變慢時壓力不會自動減輕。
+`load/payments.js` sends 80% payments and 20% balance reads; 10% of payments are retried with the same
+Idempotency-Key. An arrival-rate executor holds the number of requests per second constant, so the
+load does not ease off when the server slows down.
 
-- **load**：每秒 20 筆 × 1 分鐘，門檻是錯誤率 < 1%、付款 p95 < 500 ms、查餘額 p95 < 300 ms
-- **stress**：每秒 20 筆一路加到 400 筆，門檻被突破就停，回報停在多少負載。
-  實測跑完全部階段都沒被突破：每秒 400 筆以內付款 p95 4 ms，極限沒有測出來
-  （為什麼沒有再往上加，見 `load/README.md`）
+- **load**: 20 requests per second for 1 minute. Thresholds: error rate below 1%, payment p95 below
+  500 ms, balance-read p95 below 300 ms.
+- **stress**: ramps from 20 to 400 requests per second and stops if a threshold breaks, reporting the
+  load at that point. On the CI runner, the run completed every stage without breaking a threshold
+  (payment p95 of 4 ms up to 400 requests per second), so the limit was not found. `load/README.md`
+  explains why the load was not raised further.
 
-**壓完一定對帳。** `tools/check_invariants.py` 對壓測用的資料庫跑 8 條規則，
-沒過就失敗，stress 也一樣：可以撐不住，不能算錯錢。其中一條是壓測才加的
-「每筆付款都有對應的 Idempotency-Key」：重複扣款時帳是平的（每筆付款都有 ledger），
-原本 7 條全部通過，只有這一條抓得到。
+**Every run ends with a reconciliation.** `tools/check_invariants.py` checks eight rules against the
+load-test database and fails the run if any rule is broken, in every scenario: a stress run may break
+its thresholds, but never the balances. One rule was added because of the load test, "every payment
+has a matching Idempotency-Key": when payments are duplicated, the books still balance (each payment
+has its own ledger entry), so the original seven rules all pass and only this rule detects the problem.
 
-只在 CI 手動觸發（Actions → Load test）。情境設計、門檻理由、實測結果見
-[`load/README.md`](load/README.md)。
+The load test is triggered manually in CI (Actions → Load test). Scenario design, threshold rationale
+and measured results are in [`load/README.md`](load/README.md).
 
-## 6. 本機執行
+## 6. Running locally
 
-開發環境是 Oracle Cloud 的 Ubuntu ARM64（Ampere A1），不用 Docker。需要 Python 3.12。
+The development environment is Ubuntu on an Oracle Cloud ARM64 instance (Ampere A1), without Docker.
+Python 3.12 is required.
 
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
-# 跑全部測試：會自己起一台 API（隨機 port、暫存資料庫），跑完就關
+# Run every test: starts its own API (random port, temporary database) and stops it afterwards
 .venv/bin/pytest
 
-# HTML 報告
+# HTML report
 .venv/bin/pytest --html=reports/report.html --self-contained-html
 
-# 證明測試抓得到 bug（約 30 秒）
+# Prove the tests catch the planted defects (about 30 seconds)
 .venv/bin/python tools/fault_check.py
 
-# 自己起 API 手動打
+# Start the API for manual requests
 DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400
-BUGS=race DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400   # 開著 bug 起
+BUGS=race DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400   # with a planted defect on
 
-# 打一台已經起好的 API（CI 用這個方式）
+# Target an API that is already running (this is how CI runs the suite)
 .venv/bin/pytest --env=external --base-url=http://127.0.0.1:8400 --db-path=wallet.db
 ```
 
-> 自訂參數請用 `--opt=value`。寫成 `--db-path /tmp/x.db`（空格隔開）時，pytest 在讀設定檔之前
-> 會把 `/tmp/x.db` 當成測試路徑來決定專案根目錄，結果找不到 `pytest.ini` 與 `conftest.py`，
-> 自訂參數全部變成「不認識」。
+> Pass custom options as `--opt=value`. With `--db-path /tmp/x.db` (separated by a space), pytest
+> treats `/tmp/x.db` as a test path before reading its configuration and uses it to determine the
+> project root. It then finds neither `pytest.ini` nor `conftest.py`, and every custom option is
+> reported as unrecognized.
 
 ## 7. CI
 
-`.github/workflows/ci.yml`，每次 push 都跑三個 job：
+`.github/workflows/ci.yml` runs three jobs on every push to `main` and on every pull request:
 
-1. **API tests**：背景啟動 API → 等 `/health` → 先跑 smoke，失敗就停 → 跑完整回歸 →
-   上傳 pytest-html 與 JUnit 報告（失敗也會上傳，保留證據）
-2. **Tests catch planted bugs**：`tools/fault_check.py` 逐一打開 6 個 bug 開關，
-   每個開關都列出「應該被哪些測試抓到」，少一個就讓 CI 失敗
-3. **Postman collection (Newman)**：跑主流程與 CSV 金額邊界，上傳 htmlextra 與 JUnit 報告，
-   再用 `tools/newman_fault_check.py` 對 collection 做同樣的 bug 開關檢查
+1. **API tests**: starts the API in the background, waits for `/health`, runs the smoke tests and
+   stops if they fail, then runs the full regression suite and uploads the pytest-html and JUnit
+   reports (also on failure, so the evidence is kept).
+2. **Tests catch planted bugs**: `tools/fault_check.py` turns on each of the six planted defects in
+   turn. Each defect lists the tests that must catch it; if any of them passes, CI fails.
+3. **Postman collection (Newman)**: runs the main flows and the CSV amount boundaries, uploads the
+   htmlextra and JUnit reports, then runs `tools/newman_fault_check.py`, the same defect check for
+   the collection.
 
-另外有一個只能手動觸發的 `load.yml`：k6 壓測加上壓完對帳（見第 5 節）。
+A separate, manually triggered `load.yml` runs the k6 load test followed by the reconciliation
+(section 5).
 
-`race` 會讓哪些測試失敗跟執行時機有關（本機 6 個、CI 上 5 個），所以 fault_check 只要求
-每次都穩定抓得到的 CON-001 與「餘額 = ledger」。
+Which tests fail under `race` depends on timing (six locally, five in CI), so `fault_check.py`
+requires only the two that fail every time: CON-001 and the balance-equals-ledger invariant.
 
-CI 跑在 GitHub 的 ARM64 runner（`ubuntu-24.04-arm`），跟開發機（OCI Ampere）同架構：本機過、CI 也過，不會卡在架構差異。
+CI runs on GitHub's ARM64 runners (`ubuntu-24.04-arm`), the same architecture as the development
+machine (OCI Ampere), so a local pass cannot turn into a CI failure through architecture differences.
 
-## 8. AI 輔助開發流程
+## 8. AI-assisted development
 
-這個專案是我用 **Claude Code**（在 OCI 主機上執行的 AI coding agent）協作完成的。我的背景是
-十年支付系統的手工測試，這個 repo 是我轉型 SDET 的練習。分工如下：
+I built this project with **Claude Code**, an AI coding agent running on my OCI development server.
+My background is ten years of manual testing on payment systems; this repository is part of my move
+into test automation (SDET). The work was divided as follows:
 
-| 我做的 | Claude Code 做的 |
+| My part | Claude Code's part |
 |---|---|
-| 定需求：錢包 API 的範圍、要涵蓋哪些支付風險、不用 Docker、要有 CI | 依需求提出計畫、資料夾結構、測試案例清單 |
-| 逐條審核案例清單，決定調整（例如金額要支援小數兩位） | 撰寫 API、測試框架與測試程式碼 |
-| 每一步看完說明、自己執行、看懂才進下一步 | 每一步實際執行並回報結果，失敗時找出原因 |
-| 決定什麼時候 commit、repo 何時公開 | 依約定小步 commit，commit 訊息寫清楚改了什麼與為什麼 |
+| Set the requirements: the scope of the wallet API, which payment risks to cover, no Docker, CI required | Proposed a plan, a folder structure and a test-case list from those requirements |
+| Reviewed the test-case list item by item and decided on changes (for example, supporting two decimal places in amounts) | Wrote the API, the test framework and the tests |
+| Read the explanation of each step, ran it myself, and moved on only once I understood it | Ran each step, reported the results, and diagnosed failures |
+| Decided when to commit and when to make the repository public | Committed in small steps, with messages that explain what changed and why |
 
-**我怎麼確認 AI 寫的測試是有效的**：不相信「測試全綠」。被測系統裡埋了 bug 開關，
-每個開關打開後，指定的測試必須失敗，CI 每次都自動檢查。開發過程中這個做法真的抓到了問題（見下一節）。
+**How I verify that the AI-written tests work:** a fully passing suite is not accepted as evidence.
+Defects are planted in the system under test, each one must make its assigned tests fail, and CI
+checks this automatically on every push to main. During development this approach caught real problems
+(see the next section).
 
-## 9. 開發過程中抓到的問題
+## 9. Issues found during development
 
-這些都記錄在 commit 訊息裡：
+Each of these is recorded in the commit history.
 
-| 問題 | 怎麼發現 | 修正 |
+| Issue | How it was found | Fix |
 |---|---|---|
-| 查餘額偶爾回 500 | 寫完付款 API 手動跑併發情境 | FastAPI 可能在不同執行緒開、關同一條 SQLite 連線，關掉 `check_same_thread` |
-| 「空的 Idempotency-Key」測試根本沒送出空 key | 測試失敗，追到 client 層 | `key or new_key()` 把空字串當成沒給，改成只有 `None` 才自動產生 |
-| 浮點數 bug 開關沒有現形 | 打開 `float_math`，精度測試仍是綠的 | 33.33 剛好不會出錯，改用實測會出錯的 19.99 等值 |
-| 自訂參數「不認識」 | 本機排練 CI 指令 | 改用 `--opt=value` 寫法（見第 6 節） |
-| 重複扣款時，7 條資料庫不變式全部通過 | 打開 `no_idempotency` 跑 k6，k6 的重送檢查紅了，對帳卻是綠的 | 帳是平的，只是客人被扣了兩次。新增「每筆付款都有對應的 Idempotency-Key」 |
-| Newman 送出的金額跟 CSV 寫的不一樣 | 「科學記號 1e3 應該被拒絕」的案例拿到 201 | Newman 會把沒加引號的 CSV 欄位轉成數字：`1e3` 送出去變成 `1000`、`10.50` 變成 `10.5`。金額欄位一律加引號 |
-
-## 10. English summary
-
-**payment-api-quality-lab** is a self-built practice project, not production work: a small
-FastAPI + SQLite wallet/payment API and a pytest suite aimed at the failures that matter in
-payments — double charging on retries, overdrafts under concurrency, refunds exceeding the
-payment, rounding errors, and half-completed transfers.
-
-- **API**: wallets, top-ups, payments and refunds with `Idempotency-Key`, transfers, balance
-  and ledger history. Amounts travel as strings (`"100.50"`) and are stored as integer cents.
-  Every balance change writes a ledger row, and writes run inside `BEGIN IMMEDIATE`.
-- **Test framework**: three layers — API client (`framework/`), test data (`testdata/`, JSON
-  schemas, CSV-driven cases with case_id/marks/is_run), and test cases (`tests/`). Fixtures,
-  `parametrize`, and a `conftest.py` that spawns a hermetic API or targets an external one.
-  SQL is used both to seed data and to check seven database invariants.
-- **95 tests**: validation, business rules and limits, precision, idempotency, concurrency,
-  refunds, transfers, JSON-schema contracts, and database invariants.
-- **Proof the tests work**: six switchable defects are planted in the API. CI turns each one on
-  and fails unless the tests named for that defect go red.
-- **Postman / Newman**: the main flows (25 requests, chained through collection variables) and
-  CSV-driven amount boundaries as a Postman collection, run by Newman in CI. A separate fault
-  check proves the collection catches five of the six planted defects; the race condition is left
-  to pytest, since Postman sends one request at a time.
-- **Load testing (k6)**: load (fixed arrival rate with thresholds on error rate and p95) and
-  stress (ramp to 400 requests/s, stopping if thresholds break) scenarios, 10% of payments
-  retried with the same key. On the CI runner the stress run reached 400/s without breaking a
-  threshold (payment p95 4 ms), so the limit was not found. Every run ends with a database
-  reconciliation; a stress run may break thresholds but never the money. Run manually in CI only.
-- **CI**: GitHub Actions on ARM64 runners starts the API, runs smoke then the full suite, runs the Newman
-  collection, and uploads pytest-html, htmlextra and JUnit reports as artifacts.
-- **AI-assisted**: built with Claude Code. I set the requirements and reviewed the test list;
-  Claude Code drafted and wrote the code; every step was run and explained before moving on.
+| Balance requests occasionally returned 500 | Running concurrent scenarios by hand after the payment endpoint was written | FastAPI may open and close the same SQLite connection on different threads; `check_same_thread` is now disabled |
+| The "empty Idempotency-Key" test never actually sent an empty key | The test failed and was traced to the client layer | `key or new_key()` treated an empty string as missing; a key is now generated only when the argument is `None` |
+| The floating-point defect did not show up | With `float_math` on, the precision tests still passed | 33.33 happens to be exact in floating point; it was replaced with values verified to fail, such as 19.99 |
+| Custom pytest options were reported as unrecognized | Rehearsing the CI commands locally | Options are passed as `--opt=value` (section 6) |
+| With duplicated payments, all seven database invariants still passed | k6 with `no_idempotency` on: the k6 retry checks failed, but the reconciliation passed | The books balanced; the customer had simply been charged twice. A rule was added: every payment has a matching Idempotency-Key |
+| Newman sent amounts that differed from the CSV | The case "scientific notation 1e3 must be rejected" received 201 | Newman converts unquoted CSV fields to numbers: `1e3` is sent as `1000` and `10.50` as `10.5`. Amount columns are now always quoted |
