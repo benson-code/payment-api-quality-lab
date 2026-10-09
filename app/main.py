@@ -6,10 +6,12 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app import bugs, service
@@ -125,3 +127,11 @@ def transfer(body: TransferBody, idempotency_key: str | None = Header(default=No
     status, response, replayed = service.transfer(conn, idempotency_key, body.model_dump())
     return JSONResponse(status_code=status, content=response,
                         headers={"Idempotent-Replayed": "true" if replayed else "false"})
+
+
+# ---- 手機版網頁 ----------------------------------------------------------------
+# web/ 編譯後（cd web && npm run build）在 web/dist，掛在 /app：跟 API 同一個網址，網頁呼叫 API
+# 不會跨網站。沒編譯過就不掛，API 照常運作（API 測試與 CI 不需要 Node）。
+WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
+if WEB_DIST.is_dir():
+    app.mount("/app", StaticFiles(directory=WEB_DIST, html=True), name="web")

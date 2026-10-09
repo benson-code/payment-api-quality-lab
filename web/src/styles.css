@@ -1,0 +1,24 @@
+/* Mobile first: one column, readable without zooming, touch targets at least 44 px. */
+:root {
+  --text: #1a1a1a;
+  --muted: #5f6368;
+  --background: #ffffff;
+  --accent: #1a73e8;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text);
+  background: var(--background);
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; }
+
+.screen {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+}
+
+h1 { font-size: 1.5rem; margin: 8px 0 4px; }
+
+.note { color: var(--muted); font-size: 0.875rem; margin: 0 0 16px; }
