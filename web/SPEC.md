@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Version | 1.0 |
+| Version | 1.1 (WEB-013, WEB-014 added) |
 | Date | 2026-10-10 |
 | Status | Implemented. Every rule marked *script* was checked against the running system with a browser script on the date above; rules marked *review* were checked by reading the code |
 | Code | `web/src/` (React 19 + Vite), served by the API under `/app` |
-| Tests | Playwright for Python, `tests/web/` (cases WEB-001 to WEB-012, §7) |
+| Tests | Playwright for Python, `tests/web/` (cases WEB-001 to WEB-014, §7) |
 
 ## 1. Purpose
 
@@ -238,6 +238,8 @@ that there is one.
 | WEB-010 | History matches the ledger | After a top-up, a payment and a refund, every `history-item` matches the `ledger` table: order, type, amount, balance after. | D-02, D-05 | |
 | WEB-011 | Layout | On both profiles and on every screen: no horizontal scroll; every button and link at least 44 × 44 px. | L-01, L-02 | |
 | WEB-012 | Processing state | With the request held: `confirm-pay` disabled and reading *Processing…*, `cancel` and `back` disabled. After release: the receipt. | K-02 | |
+| WEB-013 | New attempt after Cancel or Back | Confirm `10` with no answer (request blocked) → **Back**, then Continue and **Confirm payment** again → the second request carries a new key. Repeated with **Cancel** after a refused payment. One row in `payments` per answered request. | K-05 | none on the server: the attempt is the page's (see below) |
+| WEB-014 | Top-up with no answer | Top up `10` with the request blocked → `no-answer` asks to check the balance; no `retry` on the screen; balance unchanged. | K-07 | none on the server: the rule is the page's (see below) |
 
 `tools/fault_check.py` gains these mappings, so that switching each defect on must turn its case red:
 `float_math` → WEB-004, `negative_amount` → WEB-005 (`-1`), `no_idempotency` → WEB-008,
@@ -256,17 +258,18 @@ produce concurrent requests through one page, and there is no transfer screen.
 | K-02 | WEB-007, 012 | | D-06 | — |
 | K-03 | WEB-008 | | L-01 | WEB-011 |
 | K-04 | WEB-005, 006, 009 | | L-02 | WEB-011 |
-| K-05 | — | | L-03 | — |
+| K-05 | WEB-013 | | L-03 | — |
 | K-06 | WEB-008 | | E-01, 02, 04 | WEB-005, 006, 009 |
-| K-07 | — | | E-03, 05 to 09 | — |
+| K-07 | WEB-014 | | E-03, 05 to 09 | — |
 
-**Not covered by a WEB case yet:** K-05 (a new key after Cancel or Back), K-07 (no Retry after a
-top-up gets no answer), D-03 (time zone and grouping), D-04 (masking), D-06 (hiding the balance),
-L-03 and the remaining error messages. They were checked once by script (§5), but nothing checks
-them on every change. K-05 and K-07 matter most: each guards against charging twice.
+**Not covered by a WEB case yet:** D-03 (time zone and grouping), D-04 (masking), D-06 (hiding
+the balance), L-03 and the remaining error messages. They were checked once by script (§5), but
+nothing checks them on every change. None of them can move money. (K-05 and K-07, which can, were
+uncovered in version 1.0 and got WEB-013 and WEB-014.)
 
-**WEB-007 and the planted defects.** The double-tap guard lives in the page, so no server switch
-can break it. To show the case can fail, it is also run once against a build with the guard removed.
+**Cases with no server defect.** WEB-007, WEB-013 and WEB-014 test rules that live in the page
+(the in-flight guard, the attempt, the missing Retry), so no server switch can break them. To show
+each can fail, it is also run once against a build with that piece of the page broken on purpose.
 
 ## 9. Known limitations
 
