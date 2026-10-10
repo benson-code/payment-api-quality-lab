@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| Version | 2.1: L-04 added, app progress (see §11) |
+| Version | 2.2: every app screen implemented (see §11) |
 | Date | 2026-10-10 |
-| Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: in progress** (Start, Home, History and Top up are implemented). Each app rule is marked *planned* until it is implemented and checked in full; a rule implemented for some screens only stays *planned* |
+| Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules were checked on redroid (Android 14, 360 × 640 dp) with an Appium script, except layout (L-01, L-02), which waits for APP-011. A rule stays *planned* until it is checked in full |
 | Code | Web: `web/src/` (React 19 + Vite), served by the API under `/app`. App: `android/` (Kotlin, Jetpack Compose) |
 | Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-014). App: Appium for Python, `tests/app/` (APP-001 to APP-016), planned |
 
@@ -131,9 +131,9 @@ full), or *n/a* (does not apply).
 | ID | Rule | Web | App |
 |---|---|---|---|
 | R-01 | The amount field is a text field for decimals, never a numeric type that would hand the value over as a float. The amount is sent exactly as typed. | script | review |
-| R-02 | The client does not validate amounts. The API decides, and a refused amount shows the API's reason (§6.6). The only client-side condition: an empty amount (or spaces only) disables Continue, Top up and Refund. | script | planned |
-| R-03 | *Left to refund* is computed as payment amount minus refunded, in integer cents. | script | unit |
-| R-04 | Pay has two steps. Confirm shows the amount (as `30.00` when it is a plain amount, otherwise as typed), the wallet it is paid from, and *Balance after* when the amount is plain and the result is not negative. | script | planned |
+| R-02 | The client does not validate amounts. The API decides, and a refused amount shows the API's reason (§6.6). The only client-side condition: an empty amount (or spaces only) disables Continue, Top up and Refund. | script | script |
+| R-03 | *Left to refund* is computed as payment amount minus refunded, in integer cents. | script | script |
+| R-04 | Pay has two steps. Confirm shows the amount (as `30.00` when it is a plain amount, otherwise as typed), the wallet it is paid from, and *Balance after* when the amount is plain and the result is not negative. | script | script |
 
 ### 6.2 Attempts and the Idempotency-Key
 
@@ -143,30 +143,30 @@ instead of charging again. Web: `useAttempt.js`. App: the pay and payment-detail
 
 | ID | Rule | Web | App |
 |---|---|---|---|
-| K-01 | A key (UUID v4) is created when **Confirm payment** or **Refund** is tapped, not before. | script | unit |
-| K-02 | While a request is in flight the button is disabled and reads *Processing…*; further taps send nothing, including a second tap that arrives before the screen has redrawn the disabled button. On Confirm, Cancel and Back are disabled too. | script | planned |
-| K-03 | No answer (network error, or an answer without a JSON body): the outcome is unknown. A Warning is shown and the primary button becomes **Retry**, which sends the same amount with the same key. | script | unit |
-| K-04 | An error answer is definitive and nothing was charged: the attempt ends, and the next confirm creates a new key. | script | unit |
-| K-05 | Only a different amount ends an attempt that is still waiting for an answer. Amounts are compared as money (`30` and `30.00` are the same). Going back from Confirm and continuing with the same amount shows *no answer* again and Retry resends the same key; continuing with a different amount starts a new attempt with a new key. Refunds: the field can be edited; the button reads Retry only while it holds the pending amount. | script | unit |
-| K-06 | When the API answers `Idempotent-Replayed: true`, the receipt says the payment had already gone through and was not charged again. | script | planned |
+| K-01 | A key (UUID v4) is created when **Confirm payment** or **Refund** is tapped, not before. | script | script |
+| K-02 | While a request is in flight the button is disabled and reads *Processing…*; further taps send nothing, including a second tap that arrives before the screen has redrawn the disabled button. On Confirm, Cancel and Back are disabled too. | script | script |
+| K-03 | No answer (network error, or an answer without a JSON body): the outcome is unknown. A Warning is shown and the primary button becomes **Retry**, which sends the same amount with the same key. | script | script |
+| K-04 | An error answer is definitive and nothing was charged: the attempt ends, and the next confirm creates a new key. | script | script |
+| K-05 | Only a different amount ends an attempt that is still waiting for an answer. Amounts are compared as money (`30` and `30.00` are the same). Going back from Confirm and continuing with the same amount shows *no answer* again and Retry resends the same key; continuing with a different amount starts a new attempt with a new key. Refunds: the field can be edited; the button reads Retry only while it holds the pending amount. | script | script |
+| K-06 | When the API answers `Idempotent-Replayed: true`, the receipt says the payment had already gone through and was not charged again. | script | script |
 | K-07 | Top-ups take no Idempotency-Key (the API accepts none). After no answer the client asks the user to check the balance and offers no Retry, which could add the money twice. | script | script |
-| K-08 | A pending attempt (amount, key and *no answer* state) survives screen rotation and the app's process being killed in the background: reopened, the app shows Confirm with *no answer*, and Retry resends the same key. | n/a (§10) | planned |
+| K-08 | A pending attempt (amount, key and *no answer* state) survives screen rotation and the app's process being killed in the background: reopened, the app shows Confirm with *no answer*, and Retry resends the same key. | n/a (§10) | script |
 
 ### 6.3 Navigation
 
 | ID | Rule | Web | App |
 |---|---|---|---|
-| N-01 | The system Back button or gesture does what the top bar's back does on that screen. On Confirm it returns to the amount step and keeps a pending attempt (K-05). While a request is in flight it does nothing. On a receipt it goes to Home, never back to Confirm, so a payment cannot be confirmed twice by going back. | n/a | planned |
+| N-01 | The system Back button or gesture does what the top bar's back does on that screen. On Confirm it returns to the amount step and keeps a pending attempt (K-05). While a request is in flight it does nothing. On a receipt it goes to Home, never back to Confirm, so a payment cannot be confirmed twice by going back. | n/a | script |
 
 ### 6.4 Display
 
 | ID | Rule | Web | App |
 |---|---|---|---|
 | D-01 | Amounts are formatted from the API's strings and never converted to floating point: two decimals, comma thousands separators (`12,345.60`). | script | script |
-| D-02 | Ledger rows: credits in green with `+`, debits in the text colour with `−` (U+2212, the minus sign, read as "minus" by screen readers). | script | planned |
+| D-02 | Ledger rows: credits in green with `+`, debits in the text colour with `−` (U+2212, the minus sign, read as "minus" by screen readers). | script | script |
 | D-03 | Times are shown in the device's time zone (the API returns UTC). Rows are grouped under *Today*, *Yesterday*, `9 Oct`, or `9 Oct 2025` in another year. | script | unit |
 | D-04 | The wallet ID is shown masked: first 6 characters, `••••`, last 4. Web: the full ID is in the URL. App: the full ID is in the navigation arguments; tests take it from the API response that created the wallet. | script | script |
-| D-05 | History is newest first. Only payment rows open a detail (whole row, with a chevron). Home shows the 3 latest entries. | script | planned |
+| D-05 | History is newest first. Only payment rows open a detail (whole row, with a chevron). Home shows the 3 latest entries. | script | script |
 | D-06 | The balance can be hidden (`••••••`); the toggle exposes its state to assistive technology (web: `aria-pressed`; app: a toggleable state description). The choice is not kept across screens. | script | script |
 
 ### 6.5 Layout and accessibility
@@ -184,14 +184,14 @@ Both clients show the API's `error_code` in the same plain words (web: `messages
 
 | ID | API error code | Shown as | Where | Web | App |
 |---|---|---|---|---|---|
-| E-01 | `INVALID_AMOUNT` | Enter an amount like 100 or 100.50: more than 0, at most two decimals. | Confirm; under the field on Top up and Refund | script | planned |
-| E-02 | `INSUFFICIENT_BALANCE` | Not enough balance for this payment. | Confirm | script | planned |
-| E-03 | `LIMIT_EXCEEDED` | This is above the single-payment limit of 50,000.00. | Confirm | script | planned |
-| E-04 | `REFUND_EXCEEDS_PAYMENT` | This refund would exceed what is left to refund on this payment. | Payment detail | script | planned |
+| E-01 | `INVALID_AMOUNT` | Enter an amount like 100 or 100.50: more than 0, at most two decimals. | Confirm; under the field on Top up and Refund | script | script |
+| E-02 | `INSUFFICIENT_BALANCE` | Not enough balance for this payment. | Confirm | script | script |
+| E-03 | `LIMIT_EXCEEDED` | This is above the single-payment limit of 50,000.00. | Confirm | script | script |
+| E-04 | `REFUND_EXCEEDS_PAYMENT` | This refund would exceed what is left to refund on this payment. | Payment detail | script | script |
 | E-05 | `WALLET_NOT_FOUND` | No wallet with this ID. | Start; Home | script | script |
-| E-06 | `PAYMENT_NOT_FOUND` | No payment with this ID. | Payment detail | script | planned |
+| E-06 | `PAYMENT_NOT_FOUND` | No payment with this ID. | Payment detail | script | n/a: the app opens payments only from the ledger, so an unknown ID cannot be reached |
 | E-07 | `INVALID_OWNER` | Enter a name of 1 to 50 characters. | Start | script | script |
-| E-08 | `IDEMPOTENCY_KEY_REUSED` | This request conflicts with an earlier one. Start again. | Confirm, Payment detail | review: neither client reuses a key with a different body (K-03), so it cannot be reached through a client | planned |
+| E-08 | `IDEMPOTENCY_KEY_REUSED` | This request conflicts with an earlier one. Start again. | Confirm, Payment detail | review: neither client reuses a key with a different body (K-03), so it cannot be reached through a client | review |
 | E-09 | any other code | Something went wrong (`<code>`). | anywhere | review | unit |
 
 ## 7. Screens, states and test hooks
@@ -378,6 +378,7 @@ fail, and this document says so.
 
 | Version | Change |
 |---|---|
+| 2.2 | **Every app screen implemented** (Pay with Confirm and receipt, Payment detail and refunds) and checked on redroid: 43 checks, three runs in a row, through a proxy that holds, loses or blocks requests. K-08 checked by killing the app's process while a payment's outcome was unknown: reopened, it showed Confirm with Retry, and Retry resent the saved key; charged once. Two L-04 defects found and fixed on the app: after a refund, the reloaded refund list pushed the success message below the visible area (the web keeps it in view through the browser's scroll anchoring; Compose has none), and after a refund got no answer, the Retry button sat below the visible area under its message. |
 | 2.1 | **L-04 added.** The app's first Appium run, on a 360 × 640 dp screen, could not find the Start screen's error message: it appeared below the visible area, so the user saw nothing happen after tapping. The web had the same problem at a 360 × 640 viewport; its Playwright tests had passed because a text assertion does not require the element to be in view. Both clients now show the message under the button that caused it and scroll it into view; WEB-011 checks this and fails without the fix. Also: the `item-title` hook on both clients, and the app column updated for Start, Home, History and Top up. |
 | 2.0 | **One specification for two clients.** Moved from `web/SPEC.md` to the repository root. Every rule states whether it applies to the web, the app or both; §5 lists the platform differences; new rules K-08 (a pending attempt survives process death, app) and N-01 (system Back, app); APP-001 to APP-016 planned beside WEB-001 to WEB-014. The web's behaviour is unchanged. |
 | 1.2 | **K-05 corrected.** Version 1.1 said Back from Confirm ends the attempt, so continuing with the same amount created a new key. If the first request had gone through and only its response was lost, that is a second charge. Found while writing WEB-013; the page now keeps the attempt until the amount changes, and WEB-013 (a) covers it. The browser check run for version 1.0 had asserted the old behaviour as correct. |

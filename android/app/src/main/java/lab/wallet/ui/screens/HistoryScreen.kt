@@ -44,7 +44,7 @@ class HistoryViewModel(private val api: ApiClient, private val walletId: String)
 }
 
 @Composable
-fun HistoryScreen(vm: HistoryViewModel, formats: Formats, onHome: () -> Unit) {
+fun HistoryScreen(vm: HistoryViewModel, formats: Formats, onHome: () -> Unit, onPay: () -> Unit, onOpenPayment: (String) -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     LifecycleResumeEffect(Unit) {
         vm.load()
@@ -57,7 +57,7 @@ fun HistoryScreen(vm: HistoryViewModel, formats: Formats, onHome: () -> Unit) {
                 when (tab) {
                     Tab.Home -> onHome
                     Tab.History -> null
-                    Tab.Pay -> null              // the pay flow arrives with the payment screens
+                    Tab.Pay -> onPay
                 }
             }
         },
@@ -73,7 +73,7 @@ fun HistoryScreen(vm: HistoryViewModel, formats: Formats, onHome: () -> Unit) {
             for ((label, items) in formats.groupByDay(entries) { it.createdAt }) {
                 Column(verticalArrangement = Arrangement.spacedBy(WalletSpacing.sm)) {
                     SectionHeader(label)
-                    EntryList(items, formats, rowTag = "history-item")
+                    EntryList(items, formats, rowTag = "history-item", onOpenPayment)
                 }
             }
         }

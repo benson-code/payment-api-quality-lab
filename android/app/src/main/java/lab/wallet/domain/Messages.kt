@@ -24,6 +24,11 @@ object Messages {
 
     const val NO_ANSWER_TRY_AGAIN = "No answer from the server. Try again."
     const val NO_ANSWER = "No answer from the server."
+    const val PAY_NO_ANSWER =
+        "No answer from the server. The payment may or may not have gone through. Retrying is safe: it cannot charge twice."
+    const val REFUND_NO_ANSWER =
+        "No answer from the server. The refund may or may not have gone through. Retrying is safe: it cannot refund twice."
+    const val REPLAYED = "This payment had already gone through. You were not charged again."
     const val TOP_UP_NO_ANSWER =
         "No answer from the server: the top-up may or may not have gone through. Check the balance before trying again."
 }

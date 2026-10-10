@@ -1,15 +1,21 @@
 package lab.wallet.ui.components
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -18,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import lab.wallet.R
 import lab.wallet.domain.Money
 import lab.wallet.ui.theme.WalletColors
+import lab.wallet.ui.theme.WalletRadius
 import lab.wallet.ui.theme.WalletSpacing
 import lab.wallet.ui.theme.WalletType
 
@@ -36,32 +43,54 @@ fun RowDivider() = HorizontalDivider(thickness = 1.dp, color = WalletColors.bord
  * Figma: Transaction row (Direction = Credit | Debit; Show chevron). Credit amounts in green with "+",
  * debit amounts in the text colour with "−" (SPEC D-02).
  *
- * The row is deliberately not one merged, clickable node: its title, amount and balance keep their own
- * hooks ("item-title", "item-amount", "item-balance"), which Appium can read only if they are separate.
- * Rows that open a detail (payments) arrive with the payment screens.
+ * The title, amount and balance keep their own hooks ("item-title", "item-amount", "item-balance").
+ * With [onOpen] (payments) the whole row is one button, hook "open-payment", with a chevron; its
+ * children stay readable to UiAutomator, as a button's label does.
  */
 @Composable
-fun TransactionRow(title: String, time: String, amount: String, balanceAfter: String?, testTag: String) {
-    val credit = !amount.startsWith("-")
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(WalletSpacing.md),
-        modifier = Modifier.fillMaxWidth().testTag(testTag).padding(vertical = WalletSpacing.md),
-    ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, style = WalletType.bodyStrong, color = WalletColors.textPrimary, modifier = Modifier.testTag("item-title"))
-            Text(time, style = WalletType.caption, color = WalletColors.textSecondary)
+fun TransactionRow(
+    title: String,
+    time: String,
+    amount: String,
+    balanceAfter: String?,
+    testTag: String,
+    onOpen: (() -> Unit)? = null,
+) {
+    // Two levels, as on the web: the row carries [testTag]; a row that opens a detail holds a button
+    // (hook "open-payment") with the content inside, so both hooks exist on separate nodes.
+    Box(Modifier.fillMaxWidth().testTag(testTag)) {
+        val inner = Modifier.fillMaxWidth()
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(WalletSpacing.md),
+            modifier = (if (onOpen == null) inner else inner
+                .clip(RoundedCornerShape(WalletRadius.sm))
+                .clickable(role = Role.Button, onClickLabel = "Open payment", onClick = onOpen)
+                .testTag("open-payment"))
+                .padding(vertical = WalletSpacing.md),
+        ) {
+            TransactionContent(title, time, amount, balanceAfter)
+            if (onOpen != null) WalletIcon(R.drawable.ic_chevron_right, WalletColors.iconMuted)
         }
-        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(Money.signed(amount), style = WalletType.bodyStrong.copy(fontFeatureSettings = "tnum"),
-                color = if (credit) WalletColors.amountCredit else WalletColors.textPrimary,
-                textAlign = TextAlign.End, modifier = Modifier.testTag("item-amount"))
-            if (balanceAfter != null) {
-                Row {
-                    Text("Balance ", style = WalletType.caption, color = WalletColors.textSecondary)
-                    Text(Money.display(balanceAfter), style = WalletType.caption.copy(fontFeatureSettings = "tnum"),
-                        color = WalletColors.textSecondary, modifier = Modifier.testTag("item-balance"))
-                }
+    }
+}
+
+@Composable
+private fun RowScope.TransactionContent(title: String, time: String, amount: String, balanceAfter: String?) {
+    val credit = !amount.startsWith("-")
+    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, style = WalletType.bodyStrong, color = WalletColors.textPrimary, modifier = Modifier.testTag("item-title"))
+        Text(time, style = WalletType.caption, color = WalletColors.textSecondary)
+    }
+    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(Money.signed(amount), style = WalletType.bodyStrong.copy(fontFeatureSettings = "tnum"),
+            color = if (credit) WalletColors.amountCredit else WalletColors.textPrimary,
+            textAlign = TextAlign.End, modifier = Modifier.testTag("item-amount"))
+        if (balanceAfter != null) {
+            Row {
+                Text("Balance ", style = WalletType.caption, color = WalletColors.textSecondary)
+                Text(Money.display(balanceAfter), style = WalletType.caption.copy(fontFeatureSettings = "tnum"),
+                    color = WalletColors.textSecondary, modifier = Modifier.testTag("item-balance"))
             }
         }
     }

@@ -2,8 +2,8 @@
 
 The native Android client of the wallet: Kotlin and Jetpack Compose, the same screens and behaviour
 as the web page (`../web/`), both defined by [`../SPEC.md`](../SPEC.md). Status: project skeleton and
-design system done; Start, Home, History and Top up implemented; Pay and Payment detail next (SPEC.md
-marks each app rule *planned* until it is implemented and checked in full).
+every screen implemented and checked on redroid against SPEC.md (43 checks through a proxy); the
+Appium test suite, APP-001 to APP-016, comes next.
 
 ## Build
 
@@ -75,6 +75,16 @@ finds nothing.
 - **Only what is on screen exists.** UiAutomator does not see elements scrolled out of view. That is
   how the off-screen error message on the Start screen was found (SPEC.md L-04); Playwright on the web
   had not noticed it.
+- **`clear()` then `send_keys()` races.** `send_keys` appends to the text it reads, and right after
+  `clear()` that can still be the old value: "7" and "7.00" became "77.00". Replace the text in one
+  step with `mobile: replaceElementValue`.
+- **UiScrollable stops at the first visible pixel.** `scrollIntoView` returned a button of which 32 of
+  104 px were on screen. Scroll with `mobile: scrollGesture` until the element is fully inside the
+  scrollable area, as android-appium-lab's `BasePage` does.
+- **`am kill` needs the process to be in the background**, and right after HOME it may not be yet:
+  repeat it until `pidof` finds nothing. Reopen the app with the launcher's intent
+  (`am start -a MAIN -c LAUNCHER -f 0x10200000`) so Android restores the task from its saved state;
+  `monkey` cannot run while Appium's UiAutomation is connected.
 - **Removing `adb reverse` does not cut the network.** A connection the app already holds through the
   tunnel keeps working, so a request sent after `adb reverse --remove` can still succeed. Network
   failures are produced with a proxy instead (SPEC.md §8).

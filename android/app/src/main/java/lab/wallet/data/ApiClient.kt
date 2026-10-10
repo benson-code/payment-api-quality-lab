@@ -33,6 +33,16 @@ class ApiClient(private val config: ApiConfig) {
             List(rows.length()) { Entry.from(rows.getJSONObject(it)) }
         }
 
+    /** Pays [amount] from the wallet. [key] is the attempt's Idempotency-Key (SPEC.md §6.2). */
+    suspend fun pay(walletId: String, amount: String, key: String): ApiResult<Payment> =
+        request("POST", "/payments", JSONObject().put("wallet_id", walletId).put("amount", amount), key) { Payment.from(it) }
+
+    suspend fun getPayment(paymentId: String): ApiResult<Payment> =
+        request("GET", "/payments/${seg(paymentId)}") { Payment.from(it) }
+
+    suspend fun refund(paymentId: String, amount: String, key: String): ApiResult<RefundResult> =
+        request("POST", "/payments/${seg(paymentId)}/refunds", JSONObject().put("amount", amount), key) { RefundResult.from(it) }
+
     private fun seg(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
 
     private suspend fun <T> request(

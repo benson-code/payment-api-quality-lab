@@ -125,4 +125,24 @@ class AttemptTest {
         assertEquals("no answer is not a refusal: it stays", Attempt.State.Unknown, a.state.value)
         assertEquals("30", a.pendingAmount)
     }
+
+    @Test
+    fun aRestoredAttemptResendsItsKey() = runTest {
+        // K-08: the process died while the outcome was unknown; the saved amount and key come back
+        val a = attempt()
+        a.restore("30", "saved-key")
+        assertEquals(Attempt.State.Unknown, a.state.value)
+        val api = FakeApi().apply { answers += ok }
+        a.submit("30.00", api::send)
+        assertEquals(listOf("30" to "saved-key"), api.sent)
+    }
+
+    @Test
+    fun aRestoredAttemptEndsWhenTheAmountChanges() = runTest {
+        val a = attempt()
+        a.restore("30", "saved-key")
+        val api = FakeApi().apply { answers += ok }
+        a.submit("20", api::send)
+        assertEquals("key-1", api.sent.single().second)
+    }
 }

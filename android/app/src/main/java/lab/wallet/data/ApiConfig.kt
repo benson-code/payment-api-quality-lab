@@ -17,7 +17,7 @@ data class ApiConfig(val baseUrl: String) {
         fun resolve(override: String?, debugBuild: Boolean): ApiConfig {
             val url = override?.trim()?.trimEnd('/')
             val usable = debugBuild && url != null && Regex("""^https?://[^/\s]+$""").matches(url)
-            return ApiConfig(if (usable) url!! else DEFAULT_BASE_URL)
+            return ApiConfig(if (usable) url else DEFAULT_BASE_URL)
         }
     }
 }

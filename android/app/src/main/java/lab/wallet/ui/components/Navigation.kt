@@ -27,7 +27,7 @@ import lab.wallet.ui.theme.WalletColors
 import lab.wallet.ui.theme.WalletSpacing
 import lab.wallet.ui.theme.WalletType
 
-enum class Tab(val label: String, @DrawableRes val icon: Int, val testTag: String) {
+enum class Tab(val label: String, @param:DrawableRes val icon: Int, val testTag: String) {
     Home("Home", R.drawable.ic_home, "tab-home"),
     Pay("Pay", R.drawable.ic_send, "tab-pay"),
     History("History", R.drawable.ic_history, "tab-history"),

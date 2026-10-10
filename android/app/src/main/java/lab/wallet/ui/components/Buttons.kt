@@ -69,7 +69,7 @@ fun WalletButton(
             .fillMaxWidth()
             .heightIn(min = 52.dp)
             .testTag(testTag)
-            .alpha(if (enabled) 1f else 0.4f)
+            .alpha(if (active) 1f else 0.4f)          // loading looks disabled too, as on the web
             .clip(shape)
             .background(background, shape)
             .clickable(

@@ -75,7 +75,7 @@ payment-api-quality-lab/
 │   ├── test_*.py              95 API tests
 │   └── web/                   34 web UI test runs (Playwright): browser, phones, failure evidence
 ├── SPEC.md                    Specification for both clients (web, Android): rules, screens, hooks, cases
-├── android/                   Native Android app: Kotlin + Jetpack Compose (in progress: Start, Home, History, Top up)
+├── android/                   Native Android app: Kotlin + Jetpack Compose (all screens; Appium suite next)
 ├── web/                       Mobile web front end: React + Vite, served by the API under /app
 │   └── src/                   tokens.css (Figma variables), components/ (one per Figma component), screens/
 ├── postman/                   Postman collection (run by Newman in CI)
@@ -181,7 +181,7 @@ A mobile-first wallet page (React 19 + Vite) in front of the same API, served by
 `/app`. It exists so that the risks tested at the API level are also tested where a user meets them:
 a double tap, a slow network, a response lost on its way back. There is no login and no transfer
 screen. Its specification is [`SPEC.md`](SPEC.md), which also defines the Android app with the
-same screens and behaviour (in progress in [`android/`](android/README.md), to be tested with Appium).
+same screens and behaviour (in [`android/`](android/README.md): every screen is built; its Appium suite comes next).
 
 **Screens:** Start (create or open a wallet) · Home and History tabs · Top up · Pay: amount →
 Confirm → receipt · Payment detail with refunds.
@@ -452,3 +452,4 @@ Each of these is recorded in the commit history.
 | A double-tap test with Playwright's `dblclick` still passed with the in-flight guard removed | The mutation check: the mutant survived | React disables the button between the two clicks, so the guard was never reached. WEB-007 dispatches both clicks in one JavaScript task, the gap the guard exists for |
 | One test hook read `100.00` on the top-up receipt and `63.00 TWD` on the payment receipt | Listing the hooks for SPEC.md | Every amount hook now holds the number only |
 | On a small phone, the Start screen's error message appeared below the visible area: the user tapped and saw nothing happen | The Android app's first Appium run on a 360 × 640 dp screen could not find the message (UiAutomator sees only what is on screen). The web had the same problem at a 360 × 640 viewport; its Playwright tests had passed, because a text assertion does not require the element to be in view | Both clients show the message under the button that caused it and scroll it into view (SPEC L-04). WEB-011 now checks it on a 360 × 640 viewport and fails without the fix |
+| Two more messages out of view, in the Android app only: after a refund, the reloaded refund list pushed the success message down; after a refund got no answer, Retry sat below its warning | The same Appium checks on the 360 × 640 dp screen. The web keeps the first in view through the browser's scroll anchoring, which Compose does not have | The app reloads before it shows the message, and brings the whole refund form into view when its state changes |

@@ -66,7 +66,9 @@ fun HomeScreen(
     vm: HomeViewModel,
     formats: Formats,
     onTopUp: () -> Unit,
+    onPay: () -> Unit,
     onHistory: () -> Unit,
+    onOpenPayment: (paymentId: String) -> Unit,
     onSwitchWallet: () -> Unit,
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -81,7 +83,7 @@ fun HomeScreen(
                 when (tab) {
                     Tab.Home -> null
                     Tab.History -> onHistory
-                    Tab.Pay -> null              // the pay flow arrives with the payment screens
+                    Tab.Pay -> onPay
                 }
             }
         },
@@ -92,7 +94,7 @@ fun HomeScreen(
             WalletCard(spacing = WalletSpacing.sm, padding = PaddingValues(WalletSpacing.sm)) {
                 Row(Modifier.fillMaxWidth()) {
                     QuickAction("Top up", R.drawable.ic_plus, "go-topup", Modifier.weight(1f), onTopUp)
-                    QuickAction("Pay", R.drawable.ic_send, "go-pay", Modifier.weight(1f), null)
+                    QuickAction("Pay", R.drawable.ic_send, "go-pay", Modifier.weight(1f), onPay)
                     QuickAction("History", R.drawable.ic_history, "go-history", Modifier.weight(1f), onHistory)
                 }
             }
@@ -105,7 +107,7 @@ fun HomeScreen(
                                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().testTag("recent-empty"))
                         }
                     } else {
-                        EntryList(recent, formats, rowTag = "recent-item")
+                        EntryList(recent, formats, rowTag = "recent-item", onOpenPayment)
                     }
                 }
             }
@@ -114,13 +116,14 @@ fun HomeScreen(
     }
 }
 
-/** Ledger entries in a list card, newest first, separated by hairlines. */
+/** Ledger entries in a list card, newest first, separated by hairlines. Payment rows open their detail. */
 @Composable
-fun EntryList(entries: List<Entry>, formats: Formats, rowTag: String) {
+fun EntryList(entries: List<Entry>, formats: Formats, rowTag: String, onOpenPayment: (String) -> Unit) {
     WalletCard(spacing = 0.dp, padding = PaddingValues(horizontal = WalletSpacing.lg, vertical = WalletSpacing.xs)) {
         entries.forEachIndexed { i, e ->
             if (i > 0) RowDivider()
-            TransactionRow(Formats.typeLabel(e.type), formats.time(e.createdAt), e.amount, e.balanceAfter, rowTag)
+            val open = e.refId?.takeIf { e.type == "PAYMENT" }?.let { id -> { onOpenPayment(id) } }
+            TransactionRow(Formats.typeLabel(e.type), formats.time(e.createdAt), e.amount, e.balanceAfter, rowTag, open)
         }
     }
 }

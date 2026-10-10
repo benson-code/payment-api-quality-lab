@@ -69,6 +69,16 @@ class Attempt(
         }
     }
 
+    /**
+     * Brings back an attempt saved before the app's process was killed (K-08). Its outcome is unknown:
+     * the request may or may not have reached the server, so the screen offers Retry with the same key.
+     */
+    fun restore(amount: String, key: String?) {
+        if (inFlight.get()) return
+        pending = Sent(amount, key)
+        _state.value = State.Unknown
+    }
+
     /** Ends the attempt without sending (the user changed the amount). Ignored while in flight. */
     fun reset() {
         if (inFlight.get()) return

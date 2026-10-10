@@ -1,11 +1,7 @@
 package lab.wallet.ui.screens
 
-import androidx.compose.foundation.layout.Row
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -26,8 +22,6 @@ import lab.wallet.ui.components.RowDivider
 import lab.wallet.ui.components.ReceiptRow
 import lab.wallet.ui.components.Screen
 import lab.wallet.ui.components.WalletButton
-import lab.wallet.ui.theme.WalletColors
-import lab.wallet.ui.theme.WalletType
 
 /**
  * Top up: one step (SPEC.md §7.4). Top-ups take no Idempotency-Key in this API, so there is no safe
@@ -88,13 +82,7 @@ fun TopUpScreen(vm: TopUpViewModel, onBack: () -> Unit, onDone: () -> Unit) {
             WalletButton("Top up", onClick = vm::submit, testTag = "submit", enabled = amount.isNotBlank(), loading = pending)
         },
     ) {
-        wallet?.let {
-            Row {
-                Text("Available ", style = WalletType.body, color = WalletColors.textSecondary)
-                Text(Money.display(it.balance), style = WalletType.body, color = WalletColors.textSecondary, modifier = Modifier.testTag("balance"))
-                Text(" ${it.currency}", style = WalletType.body, color = WalletColors.textSecondary)
-            }
-        }
+        wallet?.let { Available(it) }
         AmountField(amount, vm::edit, enabled = !pending, error = (state as? Attempt.State.Refused)?.message)
         if (state == Attempt.State.Unknown) {
             Message(MessageKind.Warning, Messages.TOP_UP_NO_ANSWER, testTag = "no-answer")
