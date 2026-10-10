@@ -60,7 +60,7 @@ def test_lost_response_then_retry_charges_once(page, app_url, api, db):
 
 
 @pytest.mark.case_id("WEB-012")
-def test_processing_state_blocks_every_way_out(page, app_url, api):
+def test_processing_state_blocks_every_way_out(page, app_url, api, db):
     wallet = funded_wallet(api, "100.00")
     confirm = PayPage(page, app_url).open(wallet).continue_with("30")
 
@@ -72,6 +72,7 @@ def test_processing_state_blocks_every_way_out(page, app_url, api):
         expect(confirm.tid("back")).to_be_disabled()
     receipt = ReceiptPage(page, app_url).wait()
     expect(receipt.tid("result-amount")).to_have_text("30.00")
+    assert payments_of(db, wallet) == [3000]
 
 
 @pytest.mark.case_id("WEB-013")

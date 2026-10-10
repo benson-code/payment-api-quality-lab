@@ -57,7 +57,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - run: python tools/fault_check.py
+      - run: python tools/fault_check.py --api-only
 
   newman:
     name: Postman collection (Newman)
@@ -86,3 +86,51 @@ jobs:
 
       - name: Newman catches planted bugs
         run: python tools/newman_fault_check.py
+
+  web:
+    name: Web UI tests (Playwright)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build the front end
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-web.txt
+      - name: Install Chromium
+        run: python -m playwright install --with-deps chromium
+
+      # 每個案例在 Pixel 7 與 iPhone 14 兩種設定各跑一次；失敗時截圖與 trace 留在 reports/web/
+      - name: Web UI tests
+        run: >
+          pytest tests/web
+          --html=reports/web-report.html --self-contained-html --junitxml=reports/web-junit.xml
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-report
+          path: reports/
+
+      # 伺服器的埋 bug 開關：WEB-004、005、008、009 必須失敗
+      - name: Web tests catch planted bugs
+        run: python tools/fault_check.py --web-only
+
+      # 只存在於網頁的規則：故意改壞網頁程式，WEB-007、012、013、014 必須失敗
+      - name: Web tests catch broken page code (mutation check)
+        run: python tools/web_mutation_check.py

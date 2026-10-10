@@ -1,19 +1,21 @@
 """證明測試真的抓得到 bug：每打開一個埋 bug 開關，指定的測試就必須失敗。
 
-    .venv/bin/python tools/fault_check.py              # 全部開關各跑一次
+    .venv/bin/python tools/fault_check.py              # 全部開關各跑一次（API + 網頁，網頁跑得起來的話）
     .venv/bin/python tools/fault_check.py race         # 只跑一個
+    .venv/bin/python tools/fault_check.py --api-only   # 只看 API 測試（CI 的 fault-check 工作）
+    .venv/bin/python tools/fault_check.py --web-only   # 只看網頁測試（CI 的 web 工作）
 
 只看「整套有沒有紅」不夠：可能是別的測試剛好壞掉。所以每個開關都列出
 「應該被哪些測試抓到」，少一個就算失敗。
 
-網頁案例（tests/web）也列在裡面，兩種手機各算一個。網頁測試跑不起來的環境（沒裝 Playwright、
-前端沒建置）整個略過 tests/web 並印出原因：不然「Build it first」的失敗會被當成抓到 bug。
+網頁案例（tests/web）也列在裡面，兩種手機各算一個。不帶參數時，網頁測試跑不起來的環境（沒裝
+Playwright、前端沒建置）整個略過 tests/web 並印出原因：不然「Build it first」的失敗會被當成抓到
+bug。--web-only 則一定要跑得起來，跑不起來直接失敗。
 只存在於網頁裡的規則（WEB-007、012、013、014）伺服器開關弄不壞，由 web_mutation_check.py 證明。
 """
 from __future__ import annotations
 
 import os
-import importlib.util
 import subprocess
 import sys
 import tempfile
@@ -45,27 +47,39 @@ WEB_EXPECTED = {           # web/SPEC.md §7；{phone} 會換成每一種手機
 
 def web_unavailable() -> str | None:
     """網頁測試跑不起來的原因；跑得起來回傳 None。"""
-    if importlib.util.find_spec("playwright") is None:
-        return "Playwright is not installed (pip install -r requirements-web.txt)"
+    try:
+        import playwright.sync_api  # noqa: F401
+    except ImportError as e:
+        return f"Playwright cannot be imported ({e}); pip install -r requirements-web.txt"
     if not (ROOT / "web" / "dist" / "index.html").is_file():
         return "the front end is not built (cd web && npm ci && npm run build)"
     return None
 
 
-def expected_for(bug: str, web: bool) -> list[str]:
-    names = list(EXPECTED[bug])
+def expected_for(bug: str, api: bool, web: bool) -> list[str]:
+    names = list(EXPECTED[bug]) if api else []
     if web:
         names += [t.format(phone=p) for t in WEB_EXPECTED.get(bug, []) for p in PHONES]
     return names
 
 
-def failed_tests(bug: str, web: bool) -> set[str]:
+def failed_tests(bug: str, api: bool, web: bool) -> set[str]:
+    if api and web:
+        scope = []
+    elif web:
+        scope = ["tests/web"]
+    else:
+        scope = ["--ignore=tests/web"]
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "junit.xml"
-        subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
-                        f"--junitxml={report}", *([] if web else ["--ignore=tests/web"])],
-                       cwd=ROOT, env={**os.environ, "BUGS": bug},
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        run = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                              f"--junitxml={report}", *scope],
+                             cwd=ROOT, env={**os.environ, "BUGS": bug},
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        if not report.is_file():
+            # pytest 沒寫出報告（例如收集階段就失敗）：不能當成「沒有測試失敗」
+            tail = "\n".join(run.stdout.splitlines()[-15:])
+            raise SystemExit(f"pytest wrote no report for BUGS={bug} (exit code {run.returncode}):\n{tail}")
         failed = set()
         for case in ET.parse(report).iter("testcase"):
             if case.find("failure") is not None or case.find("error") is not None:
@@ -73,14 +87,37 @@ def failed_tests(bug: str, web: bool) -> set[str]:
         return failed
 
 
-def main(bugs: list[str]) -> int:
-    reason = web_unavailable()
-    web = reason is None
-    print("web cases: checked" if web else f"web cases: NOT checked: {reason}")
+def main(args: list[str]) -> int:
+    api_only, web_only = "--api-only" in args, "--web-only" in args
+    bugs = [a for a in args if not a.startswith("--")]
+    unknown = [a for a in bugs if a not in EXPECTED]
+    if (api_only and web_only) or unknown:
+        print(f"usage: fault_check.py [--api-only | --web-only] [bug ...]; bugs: {', '.join(EXPECTED)}")
+        return 2
+
+    api = not web_only
+    if api_only:
+        web = False
+        print("web cases: not part of this run (--api-only)")
+    else:
+        reason = web_unavailable()
+        web = reason is None
+        if web_only and not web:
+            print(f"--web-only, but the web tests cannot run: {reason}")
+            return 2
+        print("web cases: checked" if web else f"web cases: NOT checked: {reason}")
+    selected = bugs or list(EXPECTED)
+    if web_only:
+        # 網頁沒有對應案例的開關（race、transfer_not_atomic）不用跑
+        selected = [b for b in selected if WEB_EXPECTED.get(b)]
+        if not selected:
+            print(f"no web case is assigned to {', '.join(bugs)}")
+            return 2
+
     missed = 0
-    for bug in bugs:
-        failed = failed_tests(bug, web)
-        not_caught = [t for t in expected_for(bug, web) if t not in failed]
+    for bug in selected:
+        failed = failed_tests(bug, api, web)
+        not_caught = [t for t in expected_for(bug, api, web) if t not in failed]
         status = "CAUGHT" if not not_caught else "MISSED"
         missed += bool(not_caught)
         print(f"{bug:<20} {status}  ({len(failed)} tests failed)")
@@ -90,4 +127,4 @@ def main(bugs: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:] or list(EXPECTED)))
+    raise SystemExit(main(sys.argv[1:]))
