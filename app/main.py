@@ -132,6 +132,7 @@ def transfer(body: TransferBody, idempotency_key: str | None = Header(default=No
 # ---- 手機版網頁 ----------------------------------------------------------------
 # web/ 編譯後（cd web && npm run build）在 web/dist，掛在 /app：跟 API 同一個網址，網頁呼叫 API
 # 不會跨網站。沒編譯過就不掛，API 照常運作（API 測試與 CI 不需要 Node）。
-WEB_DIST = Path(__file__).resolve().parent.parent / "web" / "dist"
+# WEB_DIST 環境變數可以換成別的編譯結果：tools/web_mutation_check.py 用它掛故意改壞的前端。
+WEB_DIST = Path(os.environ.get("WEB_DIST") or Path(__file__).resolve().parent.parent / "web" / "dist")
 if WEB_DIST.is_dir():
     app.mount("/app", StaticFiles(directory=WEB_DIST, html=True), name="web")

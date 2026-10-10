@@ -56,3 +56,21 @@ class ConfirmPage(WebPage):
     def change_amount(self) -> PayPage:
         self.tid("change-amount").click()
         return PayPage(self.page, self.app_url).wait()
+
+    def back(self) -> PayPage:
+        """上方的返回鍵：回到輸入金額。"""
+        self.tid("back").click()
+        return PayPage(self.page, self.app_url).wait()
+
+    def retry(self) -> None:
+        """沒有回應之後的「Retry」，不等結果。"""
+        self.tid("retry").click()
+
+    def double_tap_confirm(self) -> None:
+        """同一瞬間點兩下確認。
+
+        在同一個 JavaScript 工作裡連續觸發兩次 click：第二下發生時 React 還來不及重畫、按鈕還沒
+        變成 disabled，只有程式裡的「送出中」旗標擋得住。Playwright 的 dblclick 兩下之間畫面已經
+        更新，按鈕已停用，測不到這個空檔。
+        """
+        self.tid("confirm-pay").evaluate("b => { b.click(); b.click(); }")
