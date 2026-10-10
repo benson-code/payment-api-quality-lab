@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from playwright.sync_api import Locator, Page
 
-MINUS = "−"       # 交易紀錄的負號是 U+2212（web/SPEC.md D-02），不是減號鍵的 "-"
+MINUS = "−"       # 交易紀錄的負號是 U+2212（SPEC.md D-02），不是減號鍵的 "-"
 
 
 class WebPage:
@@ -31,7 +31,7 @@ class WebPage:
             self.page.goto(url)
 
     def layout_problems(self) -> dict:
-        """目前畫面的版面問題（web/SPEC.md L-01、L-02）：
+        """目前畫面的版面問題（SPEC.md L-01、L-02）：
 
         horizontal_scroll  頁面比螢幕寬，要左右捲動
         small_targets      小於 44 x 44 CSS px 的按鈕或連結（觸控目標太小，手指點不準）

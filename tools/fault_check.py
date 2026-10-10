@@ -37,7 +37,7 @@ EXPECTED = {
 }
 
 PHONES = ("pixel7", "iphone14")
-WEB_EXPECTED = {           # web/SPEC.md §7；{phone} 會換成每一種手機
+WEB_EXPECTED = {           # SPEC.md §8；{phone} 會換成每一種手機
     "no_idempotency": ["test_lost_response_then_retry_charges_once[{phone}]"],                     # WEB-008
     "refund_overflow": ["test_partial_refund_then_the_cumulative_limit[{phone}]"],                 # WEB-009
     "negative_amount": ["test_invalid_amount_is_refused_and_nothing_moves[{phone}-negative]"],     # WEB-005

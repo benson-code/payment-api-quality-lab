@@ -24,7 +24,7 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS = ROOT / "reports" / "web"
 
-# 每個案例都在兩種手機設定上跑（web/SPEC.md §7）。都用 Chromium：iPhone 只模擬螢幕、觸控和
+# 每個案例都在兩種手機設定上跑（SPEC.md §8）。都用 Chromium：iPhone 只模擬螢幕、觸控和
 # User-Agent，不是真的 Safari。
 PHONES = {"pixel7": "Pixel 7", "iphone14": "iPhone 14"}
 

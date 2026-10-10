@@ -1,4 +1,4 @@
-"""付款：輸入金額 → 確認 → 收據。確認頁有四種狀態（web/SPEC.md §6.5）。"""
+"""付款：輸入金額 → 確認 → 收據。確認頁有四種狀態（SPEC.md §7.5）。"""
 from __future__ import annotations
 
 from framework.web.base import WebPage

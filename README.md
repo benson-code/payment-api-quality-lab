@@ -67,15 +67,15 @@ payment-api-quality-lab/
 │   ├── schema.py              Validation that reports every mismatching field
 │   ├── factories.py           Factory functions for wallets and payments
 │   ├── cases.py               CSV loader; case_id, marks and is_run live in the data
-│   └── web.py                 Expected web error texts, copied from web/SPEC.md
+│   └── web.py                 Expected web error texts, copied from SPEC.md
 ├── cases/
 │   └── amount_validation.csv  Amount-format cases (30, one per row)
 ├── tests/                     (3) Test case layer
 │   ├── conftest.py            API startup, fixtures, --env / --target_case_ids / --target_marks
 │   ├── test_*.py              95 API tests
 │   └── web/                   34 web UI test runs (Playwright): browser, phones, failure evidence
+├── SPEC.md                    Specification for both clients (web, Android): rules, screens, hooks, cases
 ├── web/                       Mobile web front end: React + Vite, served by the API under /app
-│   ├── SPEC.md                Specification: rules, screens, test hooks, WEB cases, traceability
 │   └── src/                   tokens.css (Figma variables), components/ (one per Figma component), screens/
 ├── postman/                   Postman collection (run by Newman in CI)
 │   ├── payment-api.postman_collection.json
@@ -179,14 +179,15 @@ pytest --target_case_ids=CON-001,VAL-P08         # specific cases
 A mobile-first wallet page (React 19 + Vite) in front of the same API, served by FastAPI under
 `/app`. It exists so that the risks tested at the API level are also tested where a user meets them:
 a double tap, a slow network, a response lost on its way back. There is no login and no transfer
-screen. Its specification is [`web/SPEC.md`](web/SPEC.md).
+screen. Its specification is [`SPEC.md`](SPEC.md), which also defines the Android app with the
+same screens and behaviour (planned: built next, tested with Appium).
 
 **Screens:** Start (create or open a wallet) · Home and History tabs · Top up · Pay: amount →
 Confirm → receipt · Payment detail with refunds.
 
 **Design.** The visual design is a design system in a Figma file (private): 25 colour variables
 over 18 primitives, spacing and radius variables, eight text styles and ten components, most of
-them with variants. The screens are built in code from it. The Figma file has no screen frames; SPEC.md §6
+them with variants. The screens are built in code from it. The Figma file has no screen frames; SPEC.md §7
 lists each screen's states and test hooks instead.
 
 - `web/src/tokens.css` declares every Figma variable under the name of its code syntax in Figma:
@@ -194,11 +195,11 @@ lists each screen's states and test hooks instead.
 - Each Figma component has one React component of the same name (`TopBar`, `AmountField`,
   `TransactionRow`, ...).
 
-**Specification.** SPEC.md numbers every rule (input `R`, Idempotency-Key attempts `K`, display `D`,
-layout `L`, error messages `E`) and traces each rule to the cases that cover it, including the rules
-no case covers yet (none of those can move money). Before the specification was published, its
-rules were checked against the running page with a browser script; the two that cannot be checked
-that way are marked as checked by reading the code.
+**Specification.** SPEC.md numbers every rule (input `R`, Idempotency-Key attempts `K`, navigation
+`N`, display `D`, layout `L`, error messages `E`) and traces each rule to the cases that cover it,
+including the rules no case covers yet (none of those can move money). Before the specification was
+published, its web rules were checked against the running page with a browser script; the two that
+cannot be checked that way are marked as checked by reading the code.
 
 **Idempotency in the page.** One Idempotency-Key is created per payment attempt, when *Confirm
 payment* is tapped. After no answer, the attempt is kept: *Retry*, or going back and continuing with
@@ -217,7 +218,7 @@ server, `api` and `db` fixtures, its marks and its `--target_case_ids` / `--targ
 - Setup goes through the API; only the behaviour under test goes through the page.
 - Every case except the layout check (WEB-011) checks the database as well as the page, and every
   case fails on any uncaught JavaScript error.
-- Elements are found by `data-testid` only (SPEC.md §6). Expected texts are copied from the
+- Elements are found by `data-testid` only (SPEC.md §7). Expected texts are copied from the
   specification (`testdata/web.py`), not read from the front end's own code.
 - A failure leaves a screenshot and a Playwright trace in `reports/web/`; CI uploads them.
 
@@ -443,6 +444,6 @@ Each of these is recorded in the commit history.
 | With duplicated payments, all seven database invariants still passed | k6 with `no_idempotency` on: the k6 retry checks failed, but the reconciliation passed | The books balanced; the customer had simply been charged twice. A rule was added: every payment has a matching Idempotency-Key |
 | Newman sent amounts that differed from the CSV | The case "scientific notation 1e3 must be rejected" received 201 | Newman converts unquoted CSV fields to numbers: `1e3` is sent as `1000` and `10.50` as `10.5`. Amount columns are now always quoted |
 | In the web page, pressing *Pay* again after "no answer" would have charged twice | Reviewing the "no answer" screen before any UI test existed: the main button created a new Idempotency-Key | The pending attempt and its key are kept; Retry and the main button both resend them |
-| The same double charge came back when Pay was split into two steps: Back from Confirm, then the same amount again, sent a new key | Writing WEB-013. The specification had described this behaviour as correct, and the browser check run for the redesign had asserted it | Only a different amount ends a pending attempt (compared as money: `30` equals `30.00`). WEB-013 covers both paths; the mutation `back_forgets_the_attempt` restores the old behaviour and must make it fail. Recorded in SPEC.md §10 |
+| The same double charge came back when Pay was split into two steps: Back from Confirm, then the same amount again, sent a new key | Writing WEB-013. The specification had described this behaviour as correct, and the browser check run for the redesign had asserted it | Only a different amount ends a pending attempt (compared as money: `30` equals `30.00`). WEB-013 covers both paths; the mutation `back_forgets_the_attempt` restores the old behaviour and must make it fail. Recorded in SPEC.md §11 |
 | A double-tap test with Playwright's `dblclick` still passed with the in-flight guard removed | The mutation check: the mutant survived | React disables the button between the two clicks, so the guard was never reached. WEB-007 dispatches both clicks in one JavaScript task, the gap the guard exists for |
 | One test hook read `100.00` on the top-up receipt and `63.00 TWD` on the payment receipt | Listing the hooks for SPEC.md | Every amount hook now holds the number only |
