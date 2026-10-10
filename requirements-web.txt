@@ -1,0 +1,4 @@
+# 網頁 UI 測試（tests/web）：API 測試的依賴再加 Playwright
+# 另外要裝瀏覽器：python -m playwright install chromium
+-r requirements.txt
+playwright==1.62.0

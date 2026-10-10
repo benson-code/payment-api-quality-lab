@@ -218,8 +218,9 @@ Test hooks are `data-testid` attributes. Conventions:
 
 ## 7. Test cases
 
-All cases run in Chromium with two device profiles, Pixel 7 (412 × 915) and iPhone 14
-(390 × 844). The iPhone profile emulates the viewport, touch and user agent; it is not Safari.
+All cases run in Chromium with Playwright's two device profiles Pixel 7 (viewport 412 × 839) and
+iPhone 14 (viewport 390 × 664). The iPhone profile emulates the viewport, touch and user agent; it
+is not Safari. The browser's time zone is pinned to Asia/Taipei (D-03).
 
 Each case checks the database as well as the page: a page that *shows* one payment is not proof
 that there is one.
