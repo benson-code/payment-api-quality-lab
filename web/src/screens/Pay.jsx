@@ -44,7 +44,7 @@ export default function Pay({ walletId }) {
         <ReceiptRow label="Time">{dateTime(data.created_at)}</ReceiptRow>
         <ReceiptRow label="Payment ID" testId="result-payment-id">{data.payment_id}</ReceiptRow>
         {data.balance_after && (
-          <ReceiptRow label="Balance after" testId="result-balance">{displayAmount(data.balance_after)} TWD</ReceiptRow>
+          <ReceiptRow label="Balance after"><span data-testid="result-balance">{displayAmount(data.balance_after)}</span> TWD</ReceiptRow>
         )}
       </Receipt>
     );
@@ -108,7 +108,7 @@ export default function Pay({ walletId }) {
           <dl className="receipt">
             {wallet && <ReceiptRow label="From">{wallet.owner} · {maskId(wallet.wallet_id)}</ReceiptRow>}
             {after !== null && after >= 0 && (
-              <ReceiptRow label="Balance after" testId="confirm-balance-after">{displayAmount(fromCents(after))} TWD</ReceiptRow>
+              <ReceiptRow label="Balance after"><span data-testid="confirm-balance-after">{displayAmount(fromCents(after))}</span> TWD</ReceiptRow>
             )}
           </dl>
         </section>

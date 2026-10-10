@@ -25,7 +25,7 @@ export default function TopUp({ walletId }) {
                actions={<button type="button" className="btn btn-primary" data-testid="done"
                                 onClick={() => go(`/w/${walletId}`)}>Done</button>}>
         <ReceiptRow label="Status">Completed</ReceiptRow>
-        <ReceiptRow label="Balance after" testId="result-balance">{displayAmount(result.data.balance)}</ReceiptRow>
+        <ReceiptRow label="Balance after"><span data-testid="result-balance">{displayAmount(result.data.balance)}</span> TWD</ReceiptRow>
       </Receipt>
     );
   }
