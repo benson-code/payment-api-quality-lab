@@ -20,3 +20,16 @@ export function fromCents(n) {
   const abs = Math.abs(n);
   return `${sign}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
+
+// Signed, for ledger rows: "+100.00" for money in, "−30.00" for money out. The minus is U+2212, the
+// typographic minus sign (as in the design), not the hyphen: screen readers read it as "minus".
+export function signedAmount(value) {
+  return value.startsWith('-') ? `−${displayAmount(value.slice(1))}` : `+${displayAmount(value)}`;
+}
+
+// What the user typed, as a two-decimal amount ("30" -> "30.00"), or null if it is not a plain
+// amount. Display only: the page never decides whether an amount is valid, the API does.
+export function normalizeAmount(typed) {
+  const value = typed.trim();
+  return /^\d+(\.\d{1,2})?$/.test(value) ? fromCents(toCents(value)) : null;
+}

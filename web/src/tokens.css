@@ -1,0 +1,64 @@
+/* Design tokens, copied from the Figma file "Wallet – UI Spec" (Foundations page).
+
+   Every custom property here is a Figma variable, and its name is the variable's WEB code syntax
+   in Figma: color/bg/page -> var(--color-bg-page). Change a value in Figma first, then here.
+   Primitives (navy/900, gray/600, ...) are not exposed: components use the semantic names only. */
+:root {
+  /* Color */
+  --color-bg-page: #f8f8f6;
+  --color-bg-surface: #ffffff;
+  --color-bg-subtle: #f1f1ee;
+  --color-text-primary: #16181c;
+  --color-text-secondary: #62666d;
+  --color-text-on-primary: #ffffff;
+  --color-text-link: #2e4366;
+  --color-border-default: #e6e6e2;
+  --color-border-strong: #c8c9c5;
+  --color-border-focus: #1b2a41;
+  --color-action-primary: #1b2a41;
+  --color-action-primary-pressed: #2e4366;
+  --color-action-secondary: #f0f3f8;
+  --color-action-on-secondary: #1b2a41;
+  --color-amount-credit: #12704c;
+  --color-amount-debit: #b42318;
+  --color-feedback-error-bg: #fdeeec;
+  --color-feedback-error-text: #b42318;
+  --color-feedback-warning-bg: #fff6e3;
+  --color-feedback-warning-text: #7a4e00;
+  --color-feedback-success-bg: #eaf5ef;
+  --color-feedback-success-text: #12704c;
+  --color-icon-default: #16181c;
+  --color-icon-muted: #62666d;
+  --color-icon-on-primary: #ffffff;
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 20px;
+  --spacing-2xl: 24px;
+  --spacing-3xl: 32px;
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 999px;
+}
+
+/* Text styles (Figma: Display/Balance, Amount/Large, Title/Large, Title/Medium, Body/Regular,
+   Body/Strong, Label, Caption). Inter, bundled with the page. Amounts use tabular figures so the
+   digits line up in lists. */
+.t-display { font: 700 40px/48px Inter, system-ui, sans-serif; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.t-amount { font: 600 28px/34px Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.t-title-lg { font: 600 22px/28px Inter, system-ui, sans-serif; letter-spacing: -0.005em; }
+.t-title-md { font: 600 17px/24px Inter, system-ui, sans-serif; }
+.t-body { font: 400 15px/22px Inter, system-ui, sans-serif; }
+.t-body-strong { font: 500 15px/22px Inter, system-ui, sans-serif; }
+.t-label { font: 500 13px/18px Inter, system-ui, sans-serif; }
+.t-caption { font: 400 13px/18px Inter, system-ui, sans-serif; }
+
+.c-primary { color: var(--color-text-primary); }
+.c-secondary { color: var(--color-text-secondary); }

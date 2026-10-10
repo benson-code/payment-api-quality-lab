@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { ApiError, api } from '../api.js';
-import Header from '../Header.jsx';
-import Icon from '../Icon.jsx';
+import { TextField } from '../components/Fields.jsx';
+import Message from '../components/Message.jsx';
+import TopBar from '../components/TopBar.jsx';
 import { messageFor } from '../messages.js';
 import { go } from '../router.js';
 
@@ -27,35 +28,34 @@ export default function Start() {
   }
 
   return (
-    <>
-      <Header title="Wallet" />
-      <main className="screen">
-        <section className="hero">
-          <span className="hero-icon"><Icon name="wallet" size={32} /></span>
-          <h1>Wallet</h1>
-          <p className="note">A practice project: no real money, no login.</p>
-        </section>
+    <div className="screen">
+      <TopBar title="Wallet" />
+      <main className="content">
+        <div>
+          <h2 className="t-title-lg">Open your wallet</h2>
+          <p className="t-body c-secondary">A practice wallet: no real money, no login.</p>
+        </div>
 
         <form className="card" onSubmit={(e) => { e.preventDefault(); run(() => api.createWallet(owner)); }}>
-          <h2>New wallet</h2>
-          <label htmlFor="owner">Your name</label>
-          <input id="owner" data-testid="owner-input" value={owner} autoComplete="off"
-                 placeholder="e.g. Alex" onChange={(e) => setOwner(e.target.value)} />
-          <button type="submit" data-testid="create-wallet" disabled={busy}>Create wallet</button>
+          <h3 className="t-title-md">New wallet</h3>
+          <TextField id="owner" label="Your name" testId="owner-input" value={owner} onChange={setOwner}
+                     placeholder="e.g. Alex" />
+          <button type="submit" className="btn btn-primary" data-testid="create-wallet" disabled={busy}>Create wallet</button>
         </form>
 
+        <p className="t-caption c-secondary center">or</p>
+
         <form className="card" onSubmit={(e) => { e.preventDefault(); run(() => api.getWallet(walletId.trim())); }}>
-          <h2>Existing wallet</h2>
-          <label htmlFor="wallet-id">Wallet ID</label>
-          <input id="wallet-id" data-testid="wallet-id-input" value={walletId} autoComplete="off"
-                 placeholder="w_…" onChange={(e) => setWalletId(e.target.value)} />
-          <button type="submit" className="secondary" data-testid="open-wallet" disabled={busy}>Open wallet</button>
+          <h3 className="t-title-md">Existing wallet</h3>
+          <TextField id="wallet-id" label="Wallet ID" testId="wallet-id-input" value={walletId} onChange={setWalletId}
+                     placeholder="w_…" />
+          <button type="submit" className="btn btn-secondary" data-testid="open-wallet" disabled={busy}>Open wallet</button>
         </form>
 
         <div aria-live="polite">
-          {error && <p className="message error" data-testid="error-message">{error}</p>}
+          {error && <Message kind="error" testId="error-message">{error}</Message>}
         </div>
       </main>
-    </>
+    </div>
   );
 }
