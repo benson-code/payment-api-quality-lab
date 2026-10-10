@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { ApiError, NetworkError, newKey } from './api.js';
 import { messageFor } from './messages.js';
+import { normalizeAmount } from './money.js';
 
 // Sending an amount: top-up, payment and refund. state.kind is idle | pending | error | unknown.
 //
@@ -14,7 +15,12 @@ import { messageFor } from './messages.js';
 //   twice. Found reviewing the "no answer" screen before any test existed.)
 // - An error answer (ApiError) is definitive and nothing was charged: the attempt ends, and the
 //   next submit is a new attempt with a new key.
-// - reset() ends the attempt without sending: the user changed the amount or cancelled.
+// - A different amount is a different attempt, so it gets a new key. Amounts are compared as money
+//   ("30" and "30.00" are the same payment), and only the amount ends a pending attempt: going
+//   back from Confirm and continuing with the same amount resends the same key. (The first
+//   two-step version created a new key there, which would have charged twice when the first
+//   request had gone through. Found writing WEB-013.)
+// - reset() ends the attempt without sending: the user edited the amount.
 // - Top-ups take no Idempotency-Key in this API, so after no answer the screen asks the user to
 //   check the balance instead of offering a retry that could add the money twice.
 export function useAttempt({ idempotent, send, onDone }) {
@@ -26,7 +32,8 @@ export function useAttempt({ idempotent, send, onDone }) {
     if (inFlight.current) return;
     inFlight.current = true;
     // A pending attempt survives only an unknown outcome, so reusing it here is exactly
-    // "same amount, outcome still unknown": the amount argument is ignored then.
+    // "same amount, outcome still unknown".
+    if (attempt.current && !sameAmount(attempt.current.amount, amount)) attempt.current = null;
     if (!attempt.current) {
       attempt.current = { amount, key: idempotent ? newKey() : null };
     }
@@ -54,5 +61,16 @@ export function useAttempt({ idempotent, send, onDone }) {
     setState({ kind: 'idle' });
   }
 
-  return { state, submit, reset, pending: state.kind === 'pending' };
+  return {
+    state,
+    submit,
+    reset,
+    pending: state.kind === 'pending',
+    // The amount of the attempt still waiting for an answer, or null.
+    pendingAmount: attempt.current ? attempt.current.amount : null,
+  };
+}
+
+export function sameAmount(a, b) {
+  return (normalizeAmount(a) ?? a.trim()) === (normalizeAmount(b) ?? b.trim());
 }

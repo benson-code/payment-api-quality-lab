@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Version | 1.1 (WEB-013, WEB-014 added) |
+| Version | 1.2: K-05 corrected (see §10); 1.1 added WEB-013 and WEB-014 |
 | Date | 2026-10-10 |
 | Status | Implemented. Every rule marked *script* was checked against the running system with a browser script on the date above; rules marked *review* were checked by reading the code |
 | Code | `web/src/` (React 19 + Vite), served by the API under `/app` |
@@ -108,7 +108,7 @@ instead of charging again. Implemented in `useAttempt.js`.
 | K-02 | While a request is in flight the button is disabled and reads *Processing…*; further taps send nothing (a ref blocks the gap before React re-renders). On Confirm, Cancel and Back are disabled too. | script |
 | K-03 | No answer (network error, or an answer without a JSON body): the outcome is unknown. A Warning is shown and the primary button becomes **Retry**, which sends the same amount with the same key. | script |
 | K-04 | An error answer is definitive and nothing was charged: the attempt ends, and the next confirm creates a new key. | script |
-| K-05 | Cancel, Change amount and Back on Confirm, and editing the refund amount, end the attempt: the next confirm creates a new key. | script |
+| K-05 | Only a different amount ends an attempt that is still waiting for an answer. Amounts are compared as money (`30` and `30.00` are the same). Going back from Confirm and continuing with the same amount shows *no answer* again and Retry resends the same key; continuing with a different amount starts a new attempt with a new key. Refunds: the field can be edited; the button reads Retry only while it holds the pending amount. | script |
 | K-06 | When the API answers `Idempotent-Replayed: true`, the receipt says the payment had already gone through and was not charged again. | script |
 | K-07 | Top-ups take no Idempotency-Key (the API accepts none). After no answer the page asks the user to check the balance and offers no Retry, which could add the money twice. | script |
 
@@ -239,7 +239,7 @@ that there is one.
 | WEB-010 | History matches the ledger | After a top-up, a payment and a refund, every `history-item` matches the `ledger` table: order, type, amount, balance after. | D-02, D-05 | |
 | WEB-011 | Layout | On both profiles and on every screen: no horizontal scroll; every button and link at least 44 × 44 px. | L-01, L-02 | |
 | WEB-012 | Processing state | With the request held: `confirm-pay` disabled and reading *Processing…*, `cancel` and `back` disabled. After release: the receipt. | K-02 | |
-| WEB-013 | New attempt after Cancel or Back | Confirm `10` with no answer (request blocked) → **Back**, then Continue and **Confirm payment** again → the second request carries a new key. Repeated with **Cancel** after a refused payment. One row in `payments` per answered request. | K-05 | none on the server: the attempt is the page's (see below) |
+| WEB-013 | Back after no answer | (a) Pay `30`; the server processes it but the response is lost → **Back** → Continue with `30.00` → *no answer* is still shown → **Retry** → receipt with `replayed`; both requests carried the same key; one row in `payments`. (b) Pay `30` with the request blocked → **Back** → Continue with `20` → no *no answer* message → confirm → a new key; one row in `payments`, 20.00. | K-05 | none on the server: the attempt is the page's (see below) |
 | WEB-014 | Top-up with no answer | Top up `10` with the request blocked → `no-answer` asks to check the balance; no `retry` on the screen; balance unchanged. | K-07 | none on the server: the rule is the page's (see below) |
 
 `tools/fault_check.py` gains these mappings, so that switching each defect on must turn its case red:
@@ -268,9 +268,18 @@ the balance), L-03 and the remaining error messages. They were checked once by s
 nothing checks them on every change. None of them can move money. (K-05 and K-07, which can, were
 uncovered in version 1.0 and got WEB-013 and WEB-014.)
 
-**Cases with no server defect.** WEB-007, WEB-013 and WEB-014 test rules that live in the page
-(the in-flight guard, the attempt, the missing Retry), so no server switch can break them. To show
-each can fail, it is also run once against a build with that piece of the page broken on purpose.
+**Cases with no server defect.** WEB-007, WEB-012, WEB-013 and WEB-014 test rules that live in the
+page (the in-flight guard, the disabled button, the pending attempt, the missing Retry), so no
+server switch can break them. `tools/web_mutation_check.py` proves they can fail: it changes one
+piece of the page's code, builds that version, serves it to the tests, and requires the case to
+fail.
+
+| Mutation | Change to the page | Case that must fail |
+|---|---|---|
+| `no_in_flight_guard` | A second tap while a request is in flight is no longer ignored | WEB-007 |
+| `confirm_stays_enabled` | Confirm payment stays enabled while processing | WEB-012 |
+| `back_forgets_the_attempt` | Back from Confirm drops the pending attempt (what version 1.1 specified) | WEB-013 |
+| `top_up_offers_retry` | A Retry button appears after a top-up gets no answer | WEB-014 |
 
 ## 9. Known limitations
 
@@ -280,3 +289,18 @@ each can fail, it is also run once against a build with that piece of the page b
 - **iPhone is emulated in Chromium**, not run in Safari: the suite installs and runs Chromium only.
 - **One currency (TWD)** and English text only.
 - **The balance-hidden choice is not remembered**, by design: it resets on every screen.
+- **A pending attempt lives in the page.** Leaving the pay screen after *no answer* (Back to
+  wallet, a reload, closing the tab) forgets it, and a new payment gets a new key. The message
+  tells the user the payment may have gone through; History shows whether it did. Keeping the
+  attempt across reloads (for example in session storage) is not implemented.
+- **A top-up can still be sent twice after no answer.** The API takes no Idempotency-Key for
+  top-ups (K-07); the page withholds Retry and asks the user to check the balance, but the Top up
+  button stays available.
+
+## 10. Changes
+
+| Version | Change |
+|---|---|
+| 1.2 | **K-05 corrected.** Version 1.1 said Back from Confirm ends the attempt, so continuing with the same amount created a new key. If the first request had gone through and only its response was lost, that is a second charge. Found while writing WEB-013; the page now keeps the attempt until the amount changes, and WEB-013 (a) covers it. The browser check run for version 1.0 had asserted the old behaviour as correct. |
+| 1.1 | WEB-013 and WEB-014 added: K-05 and K-07 guard against double charges and had no case. |
+| 1.0 | First version. |

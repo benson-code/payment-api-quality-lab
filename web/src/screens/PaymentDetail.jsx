@@ -6,12 +6,13 @@ import { ReceiptRow, SectionHeader, TransactionRow } from '../components/Rows.js
 import TopBar from '../components/TopBar.jsx';
 import { dateTime } from '../format.js';
 import { displayAmount, fromCents, toCents } from '../money.js';
-import { useAttempt } from '../useAttempt.js';
+import { sameAmount, useAttempt } from '../useAttempt.js';
 import { useLoad } from './useLoad.js';
 
 // A payment, its refunds, and a refund form. What is left to refund is computed in integer cents.
-// Refunds are idempotent: after no answer the button becomes Retry and sends the same key again;
-// changing the amount starts a new attempt.
+// Refunds are idempotent: after no answer the button becomes Retry and sends the same key again.
+// The pending attempt is kept while the amount is edited; submitting a different amount starts a
+// new attempt (useAttempt compares the amounts as money).
 export default function PaymentDetail({ walletId, paymentId }) {
   const { data: payment, error, reload } = useLoad(() => api.getPayment(paymentId), [paymentId]);
   const [amount, setAmount] = useState('');
@@ -26,6 +27,7 @@ export default function PaymentDetail({ walletId, paymentId }) {
     },
   });
   const { state, pending } = attempt;
+  const retrying = state.kind === 'unknown' && sameAmount(attempt.pendingAmount ?? '', amount);
 
   return (
     <div className="screen">
@@ -61,7 +63,7 @@ export default function PaymentDetail({ walletId, paymentId }) {
             <form className="content-section" onSubmit={(e) => { e.preventDefault(); attempt.submit(amount); }}>
               <AmountField id="refund-amount" label="Refund amount" value={amount} disabled={pending}
                            error={state.kind === 'error' ? state.message : ''}
-                           onChange={(value) => { attempt.reset(); setAmount(value); setLast(null); }} />
+                           onChange={(value) => { if (state.kind === 'error') attempt.reset(); setAmount(value); setLast(null); }} />
               <div aria-live="polite">
                 {last && (
                   <Message kind="success" testId="refund-done">
@@ -74,7 +76,7 @@ export default function PaymentDetail({ walletId, paymentId }) {
                   </Message>
                 )}
               </div>
-              {state.kind === 'unknown' ? (
+              {retrying ? (
                 <button type="submit" className="btn btn-secondary" data-testid="retry">Retry</button>
               ) : (
                 <button type="submit" className="btn btn-secondary" data-testid="submit" disabled={pending || !amount.trim()}>

@@ -7,7 +7,7 @@ import TopBar from '../components/TopBar.jsx';
 import { dateTime, maskId } from '../format.js';
 import { displayAmount, fromCents, normalizeAmount, toCents } from '../money.js';
 import { go } from '../router.js';
-import { useAttempt } from '../useAttempt.js';
+import { sameAmount, useAttempt } from '../useAttempt.js';
 import Receipt from './Receipt.jsx';
 import { useLoad } from './useLoad.js';
 
@@ -16,6 +16,8 @@ import { useLoad } from './useLoad.js';
 // The Idempotency-Key is created when Confirm payment is tapped (useAttempt). Confirm shows four
 // states: ready, processing (a second tap sends nothing), refused (an error answer: nothing was
 // charged, the next confirm is a new attempt) and no answer (Retry sends the same key again).
+// After no answer the attempt survives Back: continuing with the same amount shows "no answer"
+// again with Retry, and only a different amount starts a new attempt.
 // The page does not check the amount itself: an amount the API refuses comes back as "refused".
 export default function Pay({ walletId }) {
   const { data: wallet } = useLoad(() => api.getWallet(walletId), [walletId]);
@@ -25,9 +27,16 @@ export default function Pay({ walletId }) {
   const attempt = useAttempt({ idempotent: true, send: (a, key) => api.pay(walletId, a, key), onDone: setResult });
   const { state, pending } = attempt;
 
+  // Back to the amount step. An attempt still waiting for an answer is kept (see above); a refused
+  // attempt has already ended, and its message is cleared.
   function changeAmount() {
-    attempt.reset();
+    if (state.kind !== 'unknown') attempt.reset();
     setStep('amount');
+  }
+
+  function toConfirm() {
+    if (attempt.pendingAmount !== null && !sameAmount(attempt.pendingAmount, amount)) attempt.reset();
+    setStep('confirm');
   }
 
   if (result) {
@@ -54,7 +63,7 @@ export default function Pay({ walletId }) {
     return (
       <div className="screen">
         <TopBar title="Pay" back={`#/w/${walletId}`} />
-        <form className="content" onSubmit={(e) => { e.preventDefault(); attempt.reset(); setStep('confirm'); }}>
+        <form className="content" onSubmit={(e) => { e.preventDefault(); toConfirm(); }}>
           {wallet && (
             <p className="t-body c-secondary">
               Available <span data-testid="balance">{displayAmount(wallet.balance)}</span> {wallet.currency}
