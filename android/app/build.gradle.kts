@@ -35,6 +35,8 @@ android {
         unitTests.all {
             // The token parity test compares the app's design tokens with the web's
             it.systemProperty("tokensCss", rootProject.file("../web/src/tokens.css").absolutePath)
+            // The error-message test compares the app's texts with the specification
+            it.systemProperty("specMd", rootProject.file("../SPEC.md").absolutePath)
         }
     }
 }
@@ -55,7 +57,9 @@ dependencies {
     implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.coroutines.android)
+    implementation(libs.navigation.compose)
     debugImplementation(libs.compose.ui.tooling)
 
     testImplementation(libs.junit)
+    testImplementation(libs.coroutines.test)
 }

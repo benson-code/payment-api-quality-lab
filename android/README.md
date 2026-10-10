@@ -2,7 +2,8 @@
 
 The native Android client of the wallet: Kotlin and Jetpack Compose, the same screens and behaviour
 as the web page (`../web/`), both defined by [`../SPEC.md`](../SPEC.md). Status: project skeleton and
-design system done; the screens are being built (SPEC.md marks each app rule *planned* until it is).
+design system done; Start, Home, History and Top up implemented; Pay and Payment detail next (SPEC.md
+marks each app rule *planned* until it is implemented and checked in full).
 
 ## Build
 
@@ -63,6 +64,20 @@ Compose `testTag`s are exposed as resource-ids (`testTagsAsResourceId` on the ro
 names as the web's `data-testid` (SPEC.md §7). Appium needs
 `appium:disableIdLocatorAutocompletion: true`; otherwise it prefixes the ID with `lab.wallet:id/` and
 finds nothing.
+
+### Testing Compose with Appium: what was learned
+
+- **A button's label is on its child.** A Compose button is a clickable node (the hook) with a
+  `TextView` child that holds the label, plus an empty `android.widget.Button` node; Material 3's own
+  `Button` looks exactly the same in UiAutomator. Tests read a label from the hook's `TextView` child.
+- **A merged container reports no text.** `semantics(mergeDescendants = true)` on a container gives a
+  node whose `text` is empty for UiAutomator, so `Message` puts its hook on the text itself.
+- **Only what is on screen exists.** UiAutomator does not see elements scrolled out of view. That is
+  how the off-screen error message on the Start screen was found (SPEC.md L-04); Playwright on the web
+  had not noticed it.
+- **Removing `adb reverse` does not cut the network.** A connection the app already holds through the
+  tunnel keeps working, so a request sent after `adb reverse --remove` can still succeed. Network
+  failures are produced with a proxy instead (SPEC.md §8).
 
 ## Reaching the API
 

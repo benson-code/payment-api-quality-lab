@@ -75,7 +75,7 @@ payment-api-quality-lab/
 │   ├── test_*.py              95 API tests
 │   └── web/                   34 web UI test runs (Playwright): browser, phones, failure evidence
 ├── SPEC.md                    Specification for both clients (web, Android): rules, screens, hooks, cases
-├── android/                   Native Android app: Kotlin + Jetpack Compose (in progress: design system done)
+├── android/                   Native Android app: Kotlin + Jetpack Compose (in progress: Start, Home, History, Top up)
 ├── web/                       Mobile web front end: React + Vite, served by the API under /app
 │   └── src/                   tokens.css (Figma variables), components/ (one per Figma component), screens/
 ├── postman/                   Postman collection (run by Newman in CI)
@@ -451,3 +451,4 @@ Each of these is recorded in the commit history.
 | The same double charge came back when Pay was split into two steps: Back from Confirm, then the same amount again, sent a new key | Writing WEB-013. The specification had described this behaviour as correct, and the browser check run for the redesign had asserted it | Only a different amount ends a pending attempt (compared as money: `30` equals `30.00`). WEB-013 covers both paths; the mutation `back_forgets_the_attempt` restores the old behaviour and must make it fail. Recorded in SPEC.md §11 |
 | A double-tap test with Playwright's `dblclick` still passed with the in-flight guard removed | The mutation check: the mutant survived | React disables the button between the two clicks, so the guard was never reached. WEB-007 dispatches both clicks in one JavaScript task, the gap the guard exists for |
 | One test hook read `100.00` on the top-up receipt and `63.00 TWD` on the payment receipt | Listing the hooks for SPEC.md | Every amount hook now holds the number only |
+| On a small phone, the Start screen's error message appeared below the visible area: the user tapped and saw nothing happen | The Android app's first Appium run on a 360 × 640 dp screen could not find the message (UiAutomator sees only what is on screen). The web had the same problem at a 360 × 640 viewport; its Playwright tests had passed, because a text assertion does not require the element to be in view | Both clients show the message under the button that caused it and scroll it into view (SPEC L-04). WEB-011 now checks it on a 360 × 640 viewport and fails without the fix |

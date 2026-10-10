@@ -11,7 +11,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -51,9 +55,16 @@ enum class MessageKind { Error, Warning, Success }
 /**
  * Figma: Message (Kind = Error | Warning | Success). Error: refused, nothing charged. Warning: no
  * answer, outcome unknown. Success: a confirmation. Announced by screen readers when it appears.
+ *
+ * The hook ([testTag]) is on the text itself, so a test reads the message from the hook's element (a
+ * merged container node reports no text to UiAutomator). It scrolls itself into view when it appears
+ * (SPEC L-04): on a 360 x 640 dp phone the Start screen's message landed below the visible area, and
+ * the user saw nothing happen.
  */
 @Composable
 fun Message(kind: MessageKind, text: String, testTag: String, modifier: Modifier = Modifier) {
+    val requester = remember { BringIntoViewRequester() }
+    LaunchedEffect(text) { requester.bringIntoView() }
     val (bg, fg, icon) = when (kind) {
         MessageKind.Error -> Triple(WalletColors.errorBg, WalletColors.errorText, R.drawable.ic_alert_circle)
         MessageKind.Warning -> Triple(WalletColors.warningBg, WalletColors.warningText, R.drawable.ic_alert_circle)
@@ -64,12 +75,14 @@ fun Message(kind: MessageKind, text: String, testTag: String, modifier: Modifier
         verticalAlignment = Alignment.Top,
         modifier = modifier
             .fillMaxWidth()
-            .testTag(testTag)
-            .semantics { liveRegion = if (kind == MessageKind.Error) LiveRegionMode.Assertive else LiveRegionMode.Polite }
+            .bringIntoViewRequester(requester)
+            .semantics {
+                liveRegion = if (kind == MessageKind.Error) LiveRegionMode.Assertive else LiveRegionMode.Polite
+            }
             .background(bg, RoundedCornerShape(WalletRadius.lg))
             .padding(horizontal = WalletSpacing.lg, vertical = WalletSpacing.md),
     ) {
         WalletIcon(icon, fg)
-        Text(text, style = WalletType.body, color = fg)
+        Text(text, style = WalletType.body, color = fg, modifier = Modifier.testTag(testTag))
     }
 }
