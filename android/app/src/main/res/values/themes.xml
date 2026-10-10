@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window shows the page colour (color/bg/page) before Compose draws, so there is no white flash. -->
+    <style name="Theme.Wallet" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/bg_page</item>
+    </style>
+    <color name="bg_page">#F8F8F6</color>
+    <color name="launcher_background">#1B2A41</color>
+</resources>

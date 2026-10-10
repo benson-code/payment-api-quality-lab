@@ -5,3 +5,11 @@ __pycache__/
 reports/
 web/node_modules/
 web/dist/
+
+# Android (android/): build output, Gradle and Kotlin caches, and the machine-specific SDK path
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/local.properties
+android/captures/

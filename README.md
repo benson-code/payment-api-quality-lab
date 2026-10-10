@@ -75,6 +75,7 @@ payment-api-quality-lab/
 │   ├── test_*.py              95 API tests
 │   └── web/                   34 web UI test runs (Playwright): browser, phones, failure evidence
 ├── SPEC.md                    Specification for both clients (web, Android): rules, screens, hooks, cases
+├── android/                   Native Android app: Kotlin + Jetpack Compose (in progress: design system done)
 ├── web/                       Mobile web front end: React + Vite, served by the API under /app
 │   └── src/                   tokens.css (Figma variables), components/ (one per Figma component), screens/
 ├── postman/                   Postman collection (run by Newman in CI)
@@ -180,7 +181,7 @@ A mobile-first wallet page (React 19 + Vite) in front of the same API, served by
 `/app`. It exists so that the risks tested at the API level are also tested where a user meets them:
 a double tap, a slow network, a response lost on its way back. There is no login and no transfer
 screen. Its specification is [`SPEC.md`](SPEC.md), which also defines the Android app with the
-same screens and behaviour (planned: built next, tested with Appium).
+same screens and behaviour (in progress in [`android/`](android/README.md), to be tested with Appium).
 
 **Screens:** Start (create or open a wallet) · Home and History tabs · Top up · Pay: amount →
 Confirm → receipt · Payment detail with refunds.
@@ -388,7 +389,7 @@ BUGS=race DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400   # with 
 
 ## 8. CI
 
-`.github/workflows/ci.yml` runs four jobs on every push to `main` and on every pull request:
+`.github/workflows/ci.yml` runs five jobs on every push to `main` and on every pull request:
 
 1. **API tests**: starts the API in the background, waits for `/health`, runs the smoke tests and
    stops if they fail, then runs the full regression suite and uploads the pytest-html and JUnit
@@ -402,6 +403,9 @@ BUGS=race DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400   # with 
    the web tests on both phone profiles and uploads the report together with any failure
    screenshots and traces. It then runs `tools/fault_check.py --web-only` (the planted defects
    against the web cases) and `tools/web_mutation_check.py` (the page mutations).
+5. **Android app (build and unit tests)**: builds the debug app on an x86-64 runner and runs its unit
+   tests, including a check that the app's design tokens equal the web's `tokens.css`; uploads the
+   APK. The Appium tests for the app follow once its screens exist (SPEC.md §8).
 
 A separate, manually triggered `load.yml` runs the k6 load test followed by the reconciliation
 (section 6).
