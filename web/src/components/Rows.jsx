@@ -25,7 +25,7 @@ export function TransactionRow({ title, time, amount, balanceAfter, onOpen, test
   const inner = (
     <>
       <span className="tx-left">
-        <span className="t-body-strong">{title}</span>
+        <span className="t-body-strong" data-testid="item-title">{title}</span>
         <span className="t-caption c-secondary">{time}</span>
       </span>
       <span className="tx-right">
