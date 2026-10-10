@@ -222,8 +222,8 @@ All cases run in Chromium with Playwright's two device profiles Pixel 7 (viewpor
 iPhone 14 (viewport 390 × 664). The iPhone profile emulates the viewport, touch and user agent; it
 is not Safari. The browser's time zone is pinned to Asia/Taipei (D-03).
 
-Each case checks the database as well as the page: a page that *shows* one payment is not proof
-that there is one.
+Every case except WEB-011 (layout) checks the database as well as the page: a page that *shows*
+one payment is not proof that there is one.
 
 | ID | Case | Steps and expected result | Rules | Planted defect it must catch |
 |---|---|---|---|---|
@@ -238,7 +238,7 @@ that there is one.
 | WEB-009 | Refunds | Pay `30`, refund `10` → `refund-done`, refunded `10.00`, left `20.00`; then refund `25` → E-04. Refunds in the database total 1000 cents. | R-03, K-04, E-04 | `refund_overflow` |
 | WEB-010 | History matches the ledger | After a top-up, a payment and a refund, every `history-item` matches the `ledger` table: order, type, amount, balance after. | D-02, D-05 | |
 | WEB-011 | Layout | On both profiles and on every screen: no horizontal scroll; every button and link at least 44 × 44 px. | L-01, L-02 | |
-| WEB-012 | Processing state | With the request held: `confirm-pay` disabled and reading *Processing…*, `cancel` and `back` disabled. After release: the receipt. | K-02 | |
+| WEB-012 | Processing state | With the request held: `confirm-pay` disabled and reading *Processing…*, `cancel` and `back` disabled. After release: the receipt, and one row in `payments`. | K-02 | |
 | WEB-013 | Back after no answer | (a) Pay `30`; the server processes it but the response is lost → **Back** → Continue with `30.00` → *no answer* is still shown → **Retry** → receipt with `replayed`; both requests carried the same key; one row in `payments`. (b) Pay `30` with the request blocked → **Back** → Continue with `20` → no *no answer* message → confirm → a new key; one row in `payments`, 20.00. | K-05 | none on the server: the attempt is the page's (see below) |
 | WEB-014 | Top-up with no answer | Top up `10` with the request blocked → `no-answer` asks to check the balance; no `retry` on the screen; balance unchanged. | K-07 | none on the server: the rule is the page's (see below) |
 

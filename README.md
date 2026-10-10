@@ -9,20 +9,25 @@ A pytest suite for a small wallet/payment API, focused on the failures that cost
 systems: **double charges on retry, overdrafts under concurrency, refunds that exceed the original
 payment, rounding errors, and half-completed transfers.**
 
+A **mobile web front end** (React) is served by the same API, and **Playwright for Python** tests it
+in the same pytest suite: 14 cases on two phone profiles, checked against the database as well as
+the page.
+
 The main flows are also provided as a **Postman collection** for manual use, run by **Newman** in CI.
 A **k6** load test, followed by a database reconciliation, can be triggered on demand.
 
 **Six defects are planted in the API behind switches. On every push to main, CI turns each one on and
 requires the tests assigned to it to fail.** A test that has never been seen to fail is not
-evidence that it checks anything.
+evidence that it checks anything. Rules that exist only in the web page cannot be broken by a server
+switch, so for those CI changes the page's code instead and requires the matching case to fail.
 
 | Risk | Representative cases | Planted defect (these tests must fail when it is on) |
 |---|---|---|
-| A retry after a network timeout charges twice | IDM-001, CON-002 | `no_idempotency`: the Idempotency-Key is ignored |
+| A retry after a network timeout charges twice | IDM-001, CON-002, WEB-008 | `no_idempotency`: the Idempotency-Key is ignored |
 | Concurrent payments overdraw the wallet | CON-001, DB-001 | `race`: no lock around the balance update |
-| Partial refunds add up to more than the payment | REF-002, CON-003 | `refund_overflow`: only the individual refund is checked |
-| A negative payment credits the payer | VAL-P08, VAL-T08 | `negative_amount`: negative amounts are accepted |
-| Floating-point arithmetic loses a cent | PRC-005 | `float_math`: 19.99 × 100 = 1998.9999… |
+| Partial refunds add up to more than the payment | REF-002, CON-003, WEB-009 | `refund_overflow`: only the individual refund is checked |
+| A negative payment credits the payer | VAL-P08, VAL-T08, WEB-005 | `negative_amount`: negative amounts are accepted |
+| Floating-point arithmetic loses a cent | PRC-005, WEB-004 | `float_math`: 19.99 × 100 = 1998.9999… |
 | A transfer debits the sender but never credits the receiver | TRF-006, DB-001 | `transfer_not_atomic`: debit and credit run in separate transactions |
 
 ---
@@ -32,12 +37,13 @@ evidence that it checks anything.
 1. [Architecture](#1-architecture)
 2. [System under test](#2-system-under-test)
 3. [Test strategy](#3-test-strategy)
-4. [Postman and Newman](#4-postman-and-newman)
-5. [Load testing (k6)](#5-load-testing-k6)
-6. [Running locally](#6-running-locally)
-7. [CI](#7-ci)
-8. [AI-assisted development](#8-ai-assisted-development)
-9. [Issues found during development](#9-issues-found-during-development)
+4. [Web front end and UI tests](#4-web-front-end-and-ui-tests)
+5. [Postman and Newman](#5-postman-and-newman)
+6. [Load testing (k6)](#6-load-testing-k6)
+7. [Running locally](#7-running-locally)
+8. [CI](#8-ci)
+9. [AI-assisted development](#9-ai-assisted-development)
+10. [Issues found during development](#10-issues-found-during-development)
 
 ---
 
@@ -54,17 +60,23 @@ payment-api-quality-lab/
 ├── framework/                 (1) API client layer
 │   ├── base_client.py         BaseClient: base URL, timeout, request logging
 │   ├── wallet_api.py          One method per endpoint
-│   └── db.py                  Direct SQLite access: data seeding, seven database invariants
+│   ├── db.py                  Direct SQLite access: data seeding, seven database invariants
+│   └── web/                   Web page objects (one per screen) and network control: hold, lose, block
 ├── testdata/                  (2) Test data layer
 │   ├── schemas/*.json         JSON Schemas for every response type
 │   ├── schema.py              Validation that reports every mismatching field
 │   ├── factories.py           Factory functions for wallets and payments
-│   └── cases.py               CSV loader; case_id, marks and is_run live in the data
+│   ├── cases.py               CSV loader; case_id, marks and is_run live in the data
+│   └── web.py                 Expected web error texts, copied from web/SPEC.md
 ├── cases/
 │   └── amount_validation.csv  Amount-format cases (30, one per row)
 ├── tests/                     (3) Test case layer
 │   ├── conftest.py            API startup, fixtures, --env / --target_case_ids / --target_marks
-│   └── test_*.py              95 tests
+│   ├── test_*.py              95 API tests
+│   └── web/                   34 web UI test runs (Playwright): browser, phones, failure evidence
+├── web/                       Mobile web front end: React + Vite, served by the API under /app
+│   ├── SPEC.md                Specification: rules, screens, test hooks, WEB cases, traceability
+│   └── src/                   tokens.css (Figma variables), components/ (one per Figma component), screens/
 ├── postman/                   Postman collection (run by Newman in CI)
 │   ├── payment-api.postman_collection.json
 │   ├── local.postman_environment.json
@@ -76,6 +88,7 @@ payment-api-quality-lab/
 │   └── README.md              Test types, threshold rationale, measured results
 ├── tools/
 │   ├── fault_check.py         Turns on each planted defect and checks the named pytest tests fail
+│   ├── web_mutation_check.py  Breaks one piece of the web page and checks the named web case fails
 │   ├── newman_fault_check.py  The same check for the Postman collection
 │   └── check_invariants.py    Reconciliation: runs every invariant against a database (after load tests)
 └── .github/workflows/         ci.yml (push to main, pull requests), load.yml (manual)
@@ -86,7 +99,7 @@ URLs or headers. A change to an API path touches only the client layer, and a ne
 single CSV row.
 
 Code comments, test docstrings, Postman request names and the k6 run summary are written in
-Traditional Chinese.
+Traditional Chinese; the web front end (`web/`) is written in English.
 
 ## 2. System under test
 
@@ -120,7 +133,8 @@ Every error response has the form `{"error_code": "...", "message": "..."}`.
 
 ## 3. Test strategy
 
-There are 95 tests. Each group starts from the question "if this breaks, what happens to the money?"
+There are 95 API tests (the web UI tests are described in section 4). Each group starts from the
+question "if this breaks, what happens to the money?"
 
 | File | Tests | What it guards against |
 |---|---|---|
@@ -145,7 +159,7 @@ There are 95 tests. Each group starts from the question "if this breaks, what ha
 - **Boundaries are tested at three points:** the last valid value, the boundary itself, and the first
   invalid value.
 - **Concurrency tests check correctness, not performance.** Each case sends 5 to 20 requests and
-  finishes within a second. Performance is covered separately by the load test (section 5).
+  finishes within a second. Performance is covered separately by the load test (section 6).
 - **A query that never returns rows may simply be wrong.** DB-005 copies the database, corrupts it
   deliberately, and confirms that each of the seven invariant queries detects the corruption.
 - **Test data must be verified.** 33.33 was expected to trigger a floating-point error, but
@@ -160,7 +174,105 @@ pytest --target_marks=idempotency,concurrency    # tests with any of these marks
 pytest --target_case_ids=CON-001,VAL-P08         # specific cases
 ```
 
-## 4. Postman and Newman
+## 4. Web front end and UI tests
+
+A mobile-first wallet page (React 19 + Vite) in front of the same API, served by FastAPI under
+`/app`. It exists so that the risks tested at the API level are also tested where a user meets them:
+a double tap, a slow network, a response lost on its way back. There is no login and no transfer
+screen. Its specification is [`web/SPEC.md`](web/SPEC.md).
+
+**Screens:** Start (create or open a wallet) · Home and History tabs · Top up · Pay: amount →
+Confirm → receipt · Payment detail with refunds.
+
+**Design.** The visual design is a design system in a Figma file (private): 25 colour variables
+over 18 primitives, spacing and radius variables, eight text styles and ten components, most of
+them with variants. The screens are built in code from it. The Figma file has no screen frames; SPEC.md §6
+lists each screen's states and test hooks instead.
+
+- `web/src/tokens.css` declares every Figma variable under the name of its code syntax in Figma:
+  `color/bg/page` becomes `var(--color-bg-page)`.
+- Each Figma component has one React component of the same name (`TopBar`, `AmountField`,
+  `TransactionRow`, ...).
+
+**Specification.** SPEC.md numbers every rule (input `R`, Idempotency-Key attempts `K`, display `D`,
+layout `L`, error messages `E`) and traces each rule to the cases that cover it, including the rules
+no case covers yet (none of those can move money). Before the specification was published, its
+rules were checked against the running page with a browser script; the two that cannot be checked
+that way are marked as checked by reading the code.
+
+**Idempotency in the page.** One Idempotency-Key is created per payment attempt, when *Confirm
+payment* is tapped. After no answer, the attempt is kept: *Retry*, or going back and continuing with
+the same amount, resends the same key, so a payment that did go through is returned instead of
+charged again. Only a different amount starts a new attempt. While a request is in flight, a
+second tap sends nothing.
+
+### UI tests
+
+Playwright for Python, in the same pytest suite as the API tests. The web tests reuse the API's
+server, `api` and `db` fixtures, its marks and its `--target_case_ids` / `--target_marks` selection:
+`--target_marks=precision` selects the API and the UI precision tests together.
+
+- Every case runs on two Playwright device profiles, Pixel 7 and iPhone 14, both in Chromium. The
+  iPhone profile emulates the viewport, touch and user agent; it is not Safari. The time zone is pinned.
+- Setup goes through the API; only the behaviour under test goes through the page.
+- Every case except the layout check (WEB-011) checks the database as well as the page, and every
+  case fails on any uncaught JavaScript error.
+- Elements are found by `data-testid` only (SPEC.md §6). Expected texts are copied from the
+  specification (`testdata/web.py`), not read from the front end's own code.
+- A failure leaves a screenshot and a Playwright trace in `reports/web/`; CI uploads them.
+
+| Case | What it checks | Proven to fail by |
+|---|---|---|
+| WEB-001 | A new wallet starts at 0.00 | |
+| WEB-002 | A top-up reaches the balance and the ledger | |
+| WEB-003 | Pay through Confirm to the receipt and History; one UUID v4 key, sent only on Confirm | |
+| WEB-004 | A top-up of 19.99 keeps every cent | `float_math` |
+| WEB-005 | `-1`, `1e3` and `10.555` are refused and nothing moves | `negative_amount` |
+| WEB-006 | A payment above the balance is refused; *Change amount* keeps the input | |
+| WEB-007 | Two taps in the same instant send one payment | mutation `no_in_flight_guard` |
+| WEB-008 | The server charges, the response is lost, the user retries: same key, "already gone through", one payment | `no_idempotency` |
+| WEB-009 | A partial refund, then the cumulative refund limit | `refund_overflow` |
+| WEB-010 | History equals the ledger, row by row | |
+| WEB-011 | Eight screens: no horizontal scrolling, every button and link at least 44 × 44 px | |
+| WEB-012 | While processing, Confirm, Cancel and Back are disabled | mutation `confirm_stays_enabled` |
+| WEB-013 | Back after no answer: the same amount keeps the key, a new amount gets a new one | mutation `back_forgets_the_attempt` |
+| WEB-014 | No Retry after a top-up gets no answer (the API takes no key for top-ups) | mutation `top_up_offers_retry` |
+
+**Simulating the network.** `framework/web/network.py` uses Playwright's request interception; the
+API is not changed.
+
+- `hold`: the request waits in the browser until it is released (processing state, double tap).
+- `lose_response`: the request reaches the server and is processed, but the browser sees a dropped
+  connection. This is the case that makes reusing the key necessary: the money has moved, and the
+  user only knows that there was no answer.
+- `block`: the request never leaves the browser.
+
+**Proving the UI tests can fail.** Two mechanisms, both run by CI:
+
+1. **Planted server defects.** `tools/fault_check.py` also requires the web cases in the table to
+   fail, on both phones.
+2. **Rules that live only in the page.** No server switch can break the in-flight guard, the disabled
+   button, the pending attempt or the missing Retry. `tools/web_mutation_check.py` changes one piece
+   of the page's code, builds that version, serves it to the tests (through the `WEB_DIST`
+   environment variable) and requires the matching case to fail. All four mutations are caught.
+
+**Running**
+
+```bash
+(cd web && npm ci && npm run build)        # the API serves /app only once web/dist exists
+.venv/bin/pip install -r requirements-web.txt
+.venv/bin/python -m playwright install chromium
+
+.venv/bin/pytest tests/web                       # 34 runs, about 25 seconds
+.venv/bin/python tools/fault_check.py --web-only # planted defects, web cases only
+.venv/bin/python tools/web_mutation_check.py     # page mutations; needs Node on PATH
+```
+
+Without Playwright, `tests/web` is skipped and pytest prints why. With Playwright but no build,
+every web test fails with "Build it first", so a run in which nothing was tested cannot look like a
+pass.
+
+## 5. Postman and Newman
 
 `postman/` holds a Postman collection for the same API. It can be imported into Postman for manual
 use, and Newman runs it from the command line and in CI.
@@ -170,7 +282,7 @@ use, and Newman runs it from the command line and in CI.
 | | Postman / Newman | pytest |
 |---|---|---|
 | Purpose | Lets developers and product managers reproduce issues by importing it; exploratory testing; handover | Primary automated regression suite |
-| Coverage | Main flows and representative errors (25 requests), plus amount boundaries (9 CSV rows) | 95 tests |
+| Coverage | Main flows and representative errors (25 requests), plus amount boundaries (9 CSV rows) | 95 API tests |
 | Cannot do | Query the database; generate concurrency (one request at a time) | — |
 
 **Collection structure**
@@ -219,7 +331,7 @@ With `transfer_not_atomic` on, PM-24 (transfer to a non-existent wallet) still r
 status code alone suggests nothing is wrong. Only PM-25, which reads the balance again, detects the
 missing money.
 
-## 5. Load testing (k6)
+## 6. Load testing (k6)
 
 `load/payments.js` sends 80% payments and 20% balance reads; 10% of payments are retried with the same
 Idempotency-Key. An arrival-rate executor holds the number of requests per second constant, so the
@@ -241,10 +353,10 @@ has its own ledger entry), so the original seven rules all pass and only this ru
 The load test is triggered manually in CI (Actions → Load test). Scenario design, threshold rationale
 and measured results are in [`load/README.md`](load/README.md).
 
-## 6. Running locally
+## 7. Running locally
 
 The development environment is Ubuntu on an Oracle Cloud ARM64 instance (Ampere A1), without Docker.
-Python 3.12 is required.
+Python 3.12 is required; the web front end and its tests also need Node 20 or later (section 4).
 
 ```bash
 python3 -m venv .venv
@@ -256,8 +368,9 @@ python3 -m venv .venv
 # HTML report
 .venv/bin/pytest --html=reports/report.html --self-contained-html
 
-# Prove the tests catch the planted defects (about 30 seconds)
-.venv/bin/python tools/fault_check.py
+# Prove the tests catch the planted defects (API tests only: about 30 seconds)
+.venv/bin/python tools/fault_check.py --api-only
+# Without --api-only the web cases are included when the web tests can run (section 4)
 
 # Start the API for manual requests
 DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400
@@ -272,21 +385,25 @@ BUGS=race DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400   # with 
 > project root. It then finds neither `pytest.ini` nor `conftest.py`, and every custom option is
 > reported as unrecognized.
 
-## 7. CI
+## 8. CI
 
-`.github/workflows/ci.yml` runs three jobs on every push to `main` and on every pull request:
+`.github/workflows/ci.yml` runs four jobs on every push to `main` and on every pull request:
 
 1. **API tests**: starts the API in the background, waits for `/health`, runs the smoke tests and
    stops if they fail, then runs the full regression suite and uploads the pytest-html and JUnit
    reports (also on failure, so the evidence is kept).
-2. **Tests catch planted bugs**: `tools/fault_check.py` turns on each of the six planted defects in
-   turn. Each defect lists the tests that must catch it; if any of them passes, CI fails.
+2. **Tests catch planted bugs**: `tools/fault_check.py --api-only` turns on each of the six planted
+   defects in turn. Each defect lists the tests that must catch it; if any of them passes, CI fails.
 3. **Postman collection (Newman)**: runs the main flows and the CSV amount boundaries, uploads the
    htmlextra and JUnit reports, then runs `tools/newman_fault_check.py`, the same defect check for
    the collection.
+4. **Web UI tests (Playwright)**: builds the front end (`npm ci`, Node 22), installs Chromium, runs
+   the web tests on both phone profiles and uploads the report together with any failure
+   screenshots and traces. It then runs `tools/fault_check.py --web-only` (the planted defects
+   against the web cases) and `tools/web_mutation_check.py` (the page mutations).
 
 A separate, manually triggered `load.yml` runs the k6 load test followed by the reconciliation
-(section 5).
+(section 6).
 
 Which tests fail under `race` depends on timing (six locally, five in CI), so `fault_check.py`
 requires only the two that fail every time: CON-001 and the balance-equals-ledger invariant.
@@ -294,7 +411,7 @@ requires only the two that fail every time: CON-001 and the balance-equals-ledge
 CI runs on GitHub's ARM64 runners (`ubuntu-24.04-arm`), the same architecture as the development
 machine (OCI Ampere), so a local pass cannot turn into a CI failure through architecture differences.
 
-## 8. AI-assisted development
+## 9. AI-assisted development
 
 I built this project with **Claude Code**, an AI coding agent running on my OCI development server.
 My background is ten years of manual testing on payment systems; this repository is part of my move
@@ -306,13 +423,14 @@ into test automation (SDET). The work was divided as follows:
 | Reviewed the test-case list item by item and decided on changes (for example, supporting two decimal places in amounts) | Wrote the API, the test framework and the tests |
 | Read the explanation of each step, ran it myself, and moved on only once I understood it | Ran each step, reported the results, and diagnosed failures |
 | Decided when to commit and when to make the repository public | Committed in small steps, with messages that explain what changed and why |
+| Chose the web scope and tools: Playwright for Python in the same suite, Figma for the design and its visual direction, no transfer screen; asked for WEB-013 and WEB-014 when the traceability table showed two uncovered rules that guard against double charges | Built the Figma design system, the front end, its specification and the UI tests; found and fixed a double-charge regression it had itself introduced (next section) |
 
 **How I verify that the AI-written tests work:** a fully passing suite is not accepted as evidence.
 Defects are planted in the system under test, each one must make its assigned tests fail, and CI
 checks this automatically on every push to main. During development this approach caught real problems
 (see the next section).
 
-## 9. Issues found during development
+## 10. Issues found during development
 
 Each of these is recorded in the commit history.
 
@@ -321,6 +439,10 @@ Each of these is recorded in the commit history.
 | Balance requests occasionally returned 500 | Running concurrent scenarios by hand after the payment endpoint was written | FastAPI may open and close the same SQLite connection on different threads; `check_same_thread` is now disabled |
 | The "empty Idempotency-Key" test never actually sent an empty key | The test failed and was traced to the client layer | `key or new_key()` treated an empty string as missing; a key is now generated only when the argument is `None` |
 | The floating-point defect did not show up | With `float_math` on, the precision tests still passed | 33.33 happens to be exact in floating point; it was replaced with values verified to fail, such as 19.99 |
-| Custom pytest options were reported as unrecognized | Rehearsing the CI commands locally | Options are passed as `--opt=value` (section 6) |
+| Custom pytest options were reported as unrecognized | Rehearsing the CI commands locally | Options are passed as `--opt=value` (section 7) |
 | With duplicated payments, all seven database invariants still passed | k6 with `no_idempotency` on: the k6 retry checks failed, but the reconciliation passed | The books balanced; the customer had simply been charged twice. A rule was added: every payment has a matching Idempotency-Key |
 | Newman sent amounts that differed from the CSV | The case "scientific notation 1e3 must be rejected" received 201 | Newman converts unquoted CSV fields to numbers: `1e3` is sent as `1000` and `10.50` as `10.5`. Amount columns are now always quoted |
+| In the web page, pressing *Pay* again after "no answer" would have charged twice | Reviewing the "no answer" screen before any UI test existed: the main button created a new Idempotency-Key | The pending attempt and its key are kept; Retry and the main button both resend them |
+| The same double charge came back when Pay was split into two steps: Back from Confirm, then the same amount again, sent a new key | Writing WEB-013. The specification had described this behaviour as correct, and the browser check run for the redesign had asserted it | Only a different amount ends a pending attempt (compared as money: `30` equals `30.00`). WEB-013 covers both paths; the mutation `back_forgets_the_attempt` restores the old behaviour and must make it fail. Recorded in SPEC.md §10 |
+| A double-tap test with Playwright's `dblclick` still passed with the in-flight guard removed | The mutation check: the mutant survived | React disables the button between the two clicks, so the guard was never reached. WEB-007 dispatches both clicks in one JavaScript task, the gap the guard exists for |
+| One test hook read `100.00` on the top-up receipt and `63.00 TWD` on the payment receipt | Listing the hooks for SPEC.md | Every amount hook now holds the number only |
