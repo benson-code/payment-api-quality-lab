@@ -10,7 +10,7 @@
 只看「整套有沒有紅」不夠：可能是別的測試剛好壞掉。所以每個開關都列出
 「應該被哪些測試抓到」，少一個就算失敗。
 
-網頁案例（tests/web）也列在裡面，兩種手機各算一個。不帶參數時，網頁測試跑不起來的環境（沒裝
+網頁案例（tests/web）也列在裡面，三種設定（三種瀏覽器引擎）各算一個。不帶參數時，網頁測試跑不起來的環境（沒裝
 Playwright、前端沒建置）整個略過 tests/web 並印出原因：不然「Build it first」的失敗會被當成抓到
 bug。--web-only 則一定要跑得起來，跑不起來直接失敗。
 只存在於網頁裡的規則（WEB-007、012、013、014）伺服器開關弄不壞，由 web_mutation_check.py 證明。
@@ -44,8 +44,8 @@ EXPECTED = {
                             "test_invariant_holds[no_orphan_transfer_entries]"],
 }
 
-PHONES = ("pixel7", "iphone14")
-WEB_EXPECTED = {           # SPEC.md §8；{phone} 會換成每一種手機
+PROFILES = ("pixel7", "iphone14", "desktop-firefox")     # tests/web/conftest.py：Chromium、WebKit、Firefox
+WEB_EXPECTED = {           # SPEC.md §8；{phone} 會換成每一種設定
     "no_idempotency": ["test_lost_response_then_retry_charges_once[{phone}]"],                     # WEB-008
     "refund_overflow": ["test_partial_refund_then_the_cumulative_limit[{phone}]"],                 # WEB-009
     "negative_amount": ["test_invalid_amount_is_refused_and_nothing_moves[{phone}-negative]"],     # WEB-005
@@ -98,7 +98,7 @@ def app_unavailable() -> str | None:
 def expected_for(bug: str, api: bool, web: bool, app: bool) -> list[str]:
     names = list(EXPECTED[bug]) if api else []
     if web:
-        names += [t.format(phone=p) for t in WEB_EXPECTED.get(bug, []) for p in PHONES]
+        names += [t.format(phone=p) for t in WEB_EXPECTED.get(bug, []) for p in PROFILES]
     if app:
         names += [t.format(display=d) for _, t in APP_EXPECTED.get(bug, []) for d in DISPLAYS]
     return names

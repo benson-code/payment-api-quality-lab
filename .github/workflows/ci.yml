@@ -90,7 +90,7 @@ jobs:
   web:
     name: Web UI tests (Playwright)
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -111,10 +111,11 @@ jobs:
           cache: pip
           cache-dependency-path: requirements*.txt
       - run: pip install -r requirements-web.txt
-      - name: Install Chromium
-        run: python -m playwright install --with-deps chromium
+      - name: Install the browsers (Chromium, WebKit, Firefox)
+        run: python -m playwright install --with-deps chromium webkit firefox
 
-      # 每個案例在 Pixel 7 與 iPhone 14 兩種設定各跑一次；失敗時截圖與 trace 留在 reports/web/
+      # 每個案例在三種設定各跑一次，各用自己的引擎：Pixel 7 + Chromium、iPhone 14 + WebKit（Safari 的
+      # 引擎）、桌機 + Firefox。失敗時截圖與 trace 留在 reports/web/
       - name: Web UI tests
         run: >
           pytest tests/web

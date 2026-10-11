@@ -51,7 +51,7 @@ def test_the_largest_amounts_and_a_long_name_fit(page, app_url, api):
     on_phone = problems_on(screens)
     page.set_viewport_size({"width": 360, "height": 640})
     on_small = problems_on(screens)
-    assert not on_phone and not on_small, {"phone": on_phone, "360x640": on_small}
+    assert not on_phone and not on_small, {"profile": on_phone, "360x640": on_small}
 
 
 def problems_on(screens) -> dict:

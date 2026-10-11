@@ -24,9 +24,14 @@ from playwright.sync_api import sync_playwright  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS = ROOT / "reports" / "web"
 
-# 每個案例都在兩種手機設定上跑（SPEC.md §8）。都用 Chromium：iPhone 只模擬螢幕、觸控和
-# User-Agent，不是真的 Safari。
-PHONES = {"pixel7": "Pixel 7", "iphone14": "iPhone 14"}
+# 每個案例在三種設定上各跑一次（SPEC.md §8），每種用它真正的瀏覽器引擎：Android 手機用 Chromium
+# （Chrome 的引擎），iPhone 用 WebKit（Safari 的引擎），桌機用 Firefox。
+# 設定名稱 → （Playwright 的裝置設定, 引擎）
+PROFILES = {
+    "pixel7": ("Pixel 7", "chromium"),
+    "iphone14": ("iPhone 14", "webkit"),
+    "desktop-firefox": ("Desktop Firefox", "firefox"),
+}
 
 # 畫面時間依裝置時區顯示（D-03），固定下來結果才穩定
 TIMEZONE = "Asia/Taipei"
@@ -49,26 +54,35 @@ def playwright():
 
 
 @pytest.fixture(scope="session")
-def browser(playwright):
-    b = playwright.chromium.launch()
-    yield b
-    b.close()
+def browsers(playwright):
+    """每種引擎第一次用到時才啟動，整個測試過程共用。"""
+    launched = {}
+
+    def get(engine: str):
+        if engine not in launched:
+            launched[engine] = getattr(playwright, engine).launch()
+        return launched[engine]
+
+    yield get
+    for b in launched.values():
+        b.close()
 
 
-@pytest.fixture(params=list(PHONES), ids=list(PHONES))
-def phone(request) -> str:
-    return PHONES[request.param]
+@pytest.fixture(params=list(PROFILES), ids=list(PROFILES))
+def profile(request) -> tuple[str, str]:
+    return PROFILES[request.param]
 
 
 @pytest.fixture
-def page(playwright, browser, phone, request):
+def page(playwright, browsers, profile, request):
     """每個測試一個全新的 context（cookie、storage 都不共用）。
 
     結束時檢查頁面沒有未處理的 JavaScript 例外：畫面看起來對，程式也可能已經壞了。
     """
-    device = dict(playwright.devices[phone])
-    device.pop("default_browser_type", None)        # iPhone 的預設是 webkit，這裡一律用 Chromium
-    context = browser.new_context(**device, timezone_id=TIMEZONE)
+    device_name, engine = profile
+    device = dict(playwright.devices[device_name])
+    device.pop("default_browser_type", None)        # 引擎由 PROFILES 決定，不是 context 的設定
+    context = browsers(engine).new_context(**device, timezone_id=TIMEZONE)
     context.tracing.start(screenshots=True, snapshots=True)
     pg = context.new_page()
     js_errors: list[str] = []

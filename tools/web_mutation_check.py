@@ -75,6 +75,17 @@ def build(mutant: str, out: Path) -> None:
                    check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 
 
+# tests/web/conftest.py 的三種設定。每一種都要抓到才算：只在 Chromium 失敗、在 WebKit 通過，
+# 就表示 Safari 的使用者碰到這個問題時，測試不會發現
+PROFILES = ("pixel7", "iphone14", "desktop-firefox")
+
+
+def _profile(test_name: str) -> str | None:
+    """test_x[iphone14] -> iphone14；test_x[pixel7-negative] -> pixel7。"""
+    param = test_name[test_name.find("[") + 1:-1] if "[" in test_name else ""
+    return next((p for p in sorted(PROFILES, key=len, reverse=True) if param == p or param.startswith(p + "-")), None)
+
+
 def run_cases(case_ids: list[str], dist: Path, report: Path) -> tuple[set[str], set[str]]:
     """回傳 (失敗的測試, 出錯的測試)。只有 failure 算抓到：error 是環境問題，不是突變被發現。"""
     subprocess.run([sys.executable, "-m", "pytest", "tests/web", "-q", "-p", "no:cacheprovider",
@@ -98,9 +109,10 @@ def main(names: list[str]) -> int:
             dist = Path(tmp) / "dist"
             build(name, dist)
             failed, errored = run_cases(case_ids, dist, Path(tmp) / "junit.xml")
+        missed = [p for p in PROFILES if not any(_profile(t) == p for t in failed)]
         if errored:
             status = "ERROR"
-        elif failed:
+        elif not missed:
             status = "KILLED"
         else:
             status = "SURVIVED"
@@ -110,6 +122,8 @@ def main(names: list[str]) -> int:
             print(f"    failed as it should: {t}")
         for t in sorted(errored):
             print(f"    error (not a detection): {t}")
+        for p in missed if not errored else []:
+            print(f"    passed on {p}: the mutation is not caught there")
     return 1 if survived else 0
 
 

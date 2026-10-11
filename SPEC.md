@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Version | 2.5: every app case implemented, APP-001 to APP-017 (see §11) |
+| Version | 2.6: the web cases run in three browser engines (see §11) |
 | Date | 2026-10-11 |
 | Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules are checked on redroid (Android 14) by the Appium cases in `tests/app/`. A rule stays *planned* until it is checked in full |
 | Code | Web: `web/src/` (React 19 + Vite), served by the API under `/app`. App: `android/` (Kotlin, Jetpack Compose) |
@@ -114,7 +114,7 @@ The rules are written once; where the platforms differ, this table says how each
 | Money arithmetic (R-03, R-04) | integer cents in JavaScript numbers | integer cents in `Long`; never `Double` or `Float` |
 | Idempotency-Key (K-01) | UUID v4 from `crypto.getRandomValues` (works on non-secure origins) | `java.util.UUID.randomUUID()` (version 4) |
 | Touch targets (L-02) | at least 44 × 44 CSS px | at least 48 × 48 dp (Android accessibility guideline) |
-| Screen sizes (L-01, L-02) | Playwright profiles Pixel 7 (412 × 839) and iPhone 14 (390 × 664) | redroid 720 × 1280 at 320 dpi (360 × 640 dp) and the same device set to 1080 × 2400 at 420 dpi (411 × 914 dp) |
+| Screen sizes (L-01, L-02) | Playwright profiles Pixel 7 (412 × 839, Chromium), iPhone 14 (390 × 664, WebKit) and Desktop Firefox (1280 × 720) | redroid 720 × 1280 at 320 dpi (360 × 640 dp) and the same device set to 1080 × 2400 at 420 dpi (411 × 914 dp) |
 | Test hooks (§7) | `data-testid` | Compose `testTag`, exposed as the resource-id (`testTagsAsResourceId`) |
 | A pending attempt survives… | navigation inside the pay screen only | navigation, screen rotation and process death (K-08) |
 | System back | the browser's back follows the URL history | defined by N-01 |
@@ -282,8 +282,9 @@ as the screen: a screen that *shows* one payment is not proof that there is one.
 the API; only the behaviour under test goes through the client. Expected texts are copied from §6.6,
 not read from either client's code.
 
-**Web.** Chromium with Playwright's device profiles Pixel 7 and iPhone 14 (the iPhone profile
-emulates the viewport, touch and user agent; it is not Safari). Time zone pinned to Asia/Taipei.
+**Web.** Three Playwright profiles, each in its own engine: Pixel 7 in Chromium (Chrome's engine),
+iPhone 14 in WebKit (Safari's engine, in Playwright's Linux build) and Desktop Firefox. Time zone
+pinned to Asia/Taipei.
 Network conditions are produced with Playwright's request interception.
 
 **App.** Appium (UiAutomator2) on redroid locally (Google's emulator in CI is planned), in the two
@@ -398,9 +399,10 @@ rebuilt, the case run, the code restored.
 - **No authentication.** Anyone with a wallet ID can use the wallet. The API has the same
   limitation; this is a practice system.
 - **No transfer screen.** Transfers are tested at the API level only.
-- **iPhone is emulated in Chromium** on the web, not run in Safari, and there is no iOS app: iOS
-  cannot be built or run on this project's Linux machines.
-- **The app is tested on redroid and Google's emulator**, not on physical phones: no real camera,
+- **Safari's engine, not Safari.** The iPhone profile runs in Playwright's Linux build of WebKit,
+  the engine Safari uses, not in Safari on an iPhone; and there is no iOS app: iOS cannot be built or
+  run on this project's Linux machines.
+- **The app is tested on redroid** (Google's emulator in CI is planned), not on physical phones: no real camera,
   sensors, vendor skins or Google Play services. None of the app's features need them.
 - **One currency (TWD)** and English text only.
 - **The balance-hidden choice is not remembered**, by design: it resets on every screen.
@@ -415,6 +417,7 @@ rebuilt, the case run, the code restored.
 
 | Version | Change |
 |---|---|
+| 2.6 | **Three browser engines on the web.** Every web case runs as Pixel 7 in Chromium, iPhone 14 in WebKit (Safari's engine; until now the iPhone profile ran in Chromium) and Desktop Firefox: 60 runs, passing three times in a row. `tools/fault_check.py` requires WEB-004, 005, 008 and 009 to fail in all three, and `tools/web_mutation_check.py` now counts a mutation as caught only when its case fails in every engine; all four defects and all four mutations are caught in all three. No case needed a change for WebKit or Firefox. |
 | 2.5 | **APP-007 to APP-017 implemented**: 17 cases in 27 tests (some cases have several parts or inputs), each run in both display configurations: 54 runs. `tools/fault_check.py --app` requires APP-004, 005, 008, 009 and 015 to fail under their defects; the client-only cases were seen to fail by hand (§9). Found while writing them: (1) Android drops a text squeezed to zero width from the accessibility tree, even with UiAutomator2's `allowInvisibleElements`, so the 2.3 layout defects (*From* crushed, *TWD* in a column) were invisible to any check based on element bounds; the rows now carry the hooks `receipt-row` and `balance-row`, and the layout cases require every part of a row to be visible (same rule on the web). (2) UiAutomator's own answer to "can this still scroll?" was wrong for Compose: it said no with three History rows below, so the tests compare the screen before and after each scroll. (3) Process death could only be tested when the app had been started with the launcher's intent; started by component name, Android opened a new task on return instead of restoring the old one. (4) The entry types' screen titles are now in §7. Also `tools/parity_check.py` (§8): its first run reported five differences that were its own mistake, reading the button's state before Compose had redrawn it after typing; the screen objects now wait for a field to show what was typed. |
 | 2.4 | **APP-001 to APP-006 implemented** in `tests/app/`, with screen objects in `framework/app/` named after the web's page objects and the test proxy described in §8. Each case runs in both display configurations: 18 runs, passing three times in a row on redroid. Seen to fail by hand: APP-004 with `float_math` (the receipt showed `19.98`), APP-005 with `negative_amount` (the payment of `-1` went through and the balance rose to `101.00`), and APP-005's ` 5 ` case with the app's old space trimming put back (Confirm showed `5.00`). `tools/fault_check.py` gains the app cases with APP-007 to APP-017. |
 | 2.3 | **The first full QA pass**: every automated check, the device checks, a probe that sends the same 40 inputs through both clients and compares what each shows and what the server did, and screenshots with the longest values the API allows. Fixed: (1) **a double charge in the app**: killed on the payment receipt, the app reopened on Confirm (the step and amount were saved, the receipt was not), and confirming again was a second payment with a new key; the receipt is now saved too (N-01, APP-017). (2) **The API accepted digits from other scripts**: Python's `\d` matched `１００`, which was charged as 100.00; the app showed it as `100.00` on Confirm because Android's `\d` matches them too, while its JVM unit tests could not see this. The API and both clients now write `[0-9]` (VAL-P16, P17, T16, T17; a unit test compiles the app's pattern in Unicode mode, as the device does). (3) **Confirm showed ` 5 ` as `5.00`** with a *Balance after*, and the API then refused it: both clients trimmed spaces, the API does not. *Plain* is now the API's grammar (R-04, WEB-005). (4) **Layout with long values**: on the web, a balance of `999,999,999,999.99` was clipped by its card (the page did not get wider, so the horizontal-scroll check missed it) and a long name squeezed the hide-balance button to 30 px; in the app, *From* was crushed to one letter per line and overlapped by a long name, and *TWD* was stacked into a column next to a 7-digit balance. Both clients now follow the rules in L-01; WEB-011 checks clipping inside cards and the longest values. Also: the app declares backup rules for Android 12 and later. |

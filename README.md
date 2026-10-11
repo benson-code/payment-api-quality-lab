@@ -10,10 +10,10 @@ systems: **double charges on retry, overdrafts under concurrency, refunds that e
 payment, rounding errors, and half-completed transfers.**
 
 A **mobile web front end** (React) is served by the same API, and **Playwright for Python** tests it
-in the same pytest suite: 14 cases on two phone profiles, checked against the database as well as
-the page. A native **Android app** (Kotlin, Jetpack Compose) has the same screens and rules, and
-**Appium** tests it in the same suite, through a test proxy that can hold a request or lose its
-response.
+in the same pytest suite: 14 cases in three browser engines (Chromium, WebKit, Firefox), checked
+against the database as well as the page. A native **Android app** (Kotlin, Jetpack Compose) has the
+same screens and rules, and **Appium** tests it in the same suite, through a test proxy that can hold
+a request or lose its response.
 
 The main flows are also provided as a **Postman collection** for manual use, run by **Newman** in CI.
 A **k6** load test, followed by a database reconciliation, can be triggered on demand.
@@ -76,7 +76,7 @@ payment-api-quality-lab/
 ├── tests/                     (3) Test case layer
 │   ├── conftest.py            API startup, fixtures, --env / --target_case_ids / --target_marks
 │   ├── test_*.py              99 API tests
-│   ├── web/                   40 web UI test runs (Playwright): browser, phones, failure evidence
+│   ├── web/                   60 web UI test runs (Playwright): three engines, failure evidence
 │   └── app/                   54 app UI test runs (Appium): device, displays, test proxy, failure evidence
 ├── SPEC.md                    Specification for both clients (web, Android): rules, screens, hooks, cases
 ├── android/                   Native Android app: Kotlin + Jetpack Compose
@@ -218,8 +218,9 @@ Playwright for Python, in the same pytest suite as the API tests. The web tests 
 server, `api` and `db` fixtures, its marks and its `--target_case_ids` / `--target_marks` selection:
 `--target_marks=precision` selects the API and the UI precision tests together.
 
-- Every case runs on two Playwright device profiles, Pixel 7 and iPhone 14, both in Chromium. The
-  iPhone profile emulates the viewport, touch and user agent; it is not Safari. The time zone is pinned.
+- **Cross-browser.** Every case runs three times, each in the engine of its profile: Pixel 7 in
+  Chromium (Chrome's engine), iPhone 14 in WebKit (Safari's engine) and a desktop in Firefox. WebKit
+  here is Playwright's Linux build of Safari's engine, not Safari on iOS. The time zone is pinned.
 - Setup goes through the API; only the behaviour under test goes through the page.
 - Every case except the layout check (WEB-011) checks the database as well as the page, and every
   case fails on any uncaught JavaScript error.
@@ -256,20 +257,23 @@ API is not changed.
 **Proving the UI tests can fail.** Two mechanisms, both run by CI:
 
 1. **Planted server defects.** `tools/fault_check.py` also requires the web cases in the table to
-   fail, on both phones.
+   fail, in all three engines.
 2. **Rules that live only in the page.** No server switch can break the in-flight guard, the disabled
    button, the pending attempt or the missing Retry. `tools/web_mutation_check.py` changes one piece
    of the page's code, builds that version, serves it to the tests (through the `WEB_DIST`
-   environment variable) and requires the matching case to fail. All four mutations are caught.
+   environment variable) and requires the matching case to fail in every engine: a mutation caught in
+   Chromium but not in WebKit would be a problem Safari users could meet unnoticed. All four
+   mutations are caught in all three engines.
 
 **Running**
 
 ```bash
 (cd web && npm ci && npm run build)        # the API serves /app only once web/dist exists
 .venv/bin/pip install -r requirements-web.txt
-.venv/bin/python -m playwright install chromium
+.venv/bin/python -m playwright install chromium webkit firefox
+sudo .venv/bin/python -m playwright install-deps webkit   # once: the libraries WebKit needs on Linux
 
-.venv/bin/pytest tests/web                       # 40 runs, about 30 seconds
+.venv/bin/pytest tests/web                       # 60 runs, about 75 seconds
 .venv/bin/python tools/fault_check.py --web-only # planted defects, web cases only
 .venv/bin/python tools/web_mutation_check.py     # page mutations; needs Node on PATH
 ```
@@ -479,8 +483,8 @@ BUGS=race DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400   # with 
 3. **Postman collection (Newman)**: runs the main flows and the CSV amount boundaries, uploads the
    htmlextra and JUnit reports, then runs `tools/newman_fault_check.py`, the same defect check for
    the collection.
-4. **Web UI tests (Playwright)**: builds the front end (`npm ci`, Node 22), installs Chromium, runs
-   the web tests on both phone profiles and uploads the report together with any failure
+4. **Web UI tests (Playwright)**: builds the front end (`npm ci`, Node 22), installs Chromium,
+   WebKit and Firefox, runs the web tests in all three and uploads the report together with any failure
    screenshots and traces. It then runs `tools/fault_check.py --web-only` (the planted defects
    against the web cases) and `tools/web_mutation_check.py` (the page mutations).
 5. **Android app (build and unit tests)**: builds the debug app on an x86-64 runner and runs its unit
