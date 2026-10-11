@@ -88,6 +88,20 @@ finds nothing.
 - **Removing `adb reverse` does not cut the network.** A connection the app already holds through the
   tunnel keeps working, so a request sent after `adb reverse --remove` can still succeed. Network
   failures are produced with a proxy instead (SPEC.md §8).
+- **Check the screenshots, not only the bounds.** A label crushed to one letter per line and overlapped
+  by its value passed a script that compared element bounds with the screen; it showed at once in a
+  screenshot.
+
+### Compose differences that matter for parity with the web
+
+- **No min-content floor.** In a browser, a flex item never shrinks below its longest word. A weighted
+  Compose `Text` shrinks to whatever is left, so `ReceiptRow` measures the label's longest word and
+  keeps it that wide.
+- **`\d` is Unicode on the device.** Android's regex engine (ICU) matches any script's digits with
+  `\d`; the JVM that runs the unit tests does not, so a unit test cannot see the difference unless it
+  compiles the pattern in Unicode mode (`MoneyTest`). Patterns write `[0-9]`.
+- **No scroll anchoring.** Content inserted above the viewport pushes what the user is looking at down;
+  a message is shown after the content that would push it (SPEC.md L-04).
 
 ## Reaching the API
 

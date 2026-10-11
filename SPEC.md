@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Version | 2.2: every app screen implemented (see §11) |
-| Date | 2026-10-10 |
+| Version | 2.3: defects from the first full QA pass fixed (see §11) |
+| Date | 2026-10-11 |
 | Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules were checked on redroid (Android 14, 360 × 640 dp) with an Appium script, except layout (L-01, L-02), which waits for APP-011. A rule stays *planned* until it is checked in full |
 | Code | Web: `web/src/` (React 19 + Vite), served by the API under `/app`. App: `android/` (Kotlin, Jetpack Compose) |
-| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-014). App: Appium for Python, `tests/app/` (APP-001 to APP-016), planned |
+| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-014). App: Appium for Python, `tests/app/` (APP-001 to APP-017), planned |
 
 ## 1. Purpose
 
@@ -118,6 +118,8 @@ The rules are written once; where the platforms differ, this table says how each
 | Test hooks (§7) | `data-testid` | Compose `testTag`, exposed as the resource-id (`testTagsAsResourceId`) |
 | A pending attempt survives… | navigation inside the pay screen only | navigation, screen rotation and process death (K-08) |
 | System back | the browser's back follows the URL history | defined by N-01 |
+| Digits in patterns (R-04) | `[0-9]`; JavaScript's `\d` is ASCII anyway | `[0-9]`: on Android `\d` matches any script's digits (the regex engine is ICU), on the JVM that runs the unit tests it does not. The API writes `[0-9]` too: Python's `\d` accepted `１００` |
+| Text that does not fit (L-01) | the browser's flex layout: a label never shrinks below its longest word | Compose has no such floor: rows measure the label's longest word and leave it that width |
 
 ## 6. Rules
 
@@ -133,7 +135,7 @@ full), or *n/a* (does not apply).
 | R-01 | The amount field is a text field for decimals, never a numeric type that would hand the value over as a float. The amount is sent exactly as typed. | script | review |
 | R-02 | The client does not validate amounts. The API decides, and a refused amount shows the API's reason (§6.6). The only client-side condition: an empty amount (or spaces only) disables Continue, Top up and Refund. | script | script |
 | R-03 | *Left to refund* is computed as payment amount minus refunded, in integer cents. | script | script |
-| R-04 | Pay has two steps. Confirm shows the amount (as `30.00` when it is a plain amount, otherwise as typed), the wallet it is paid from, and *Balance after* when the amount is plain and the result is not negative. | script | script |
+| R-04 | Pay has two steps. Confirm shows the amount (as `30.00` when it is a plain amount, otherwise as typed; *plain* is the API's own grammar, digits `0`-`9` with at most two decimals and nothing else, not even spaces), the wallet it is paid from, and *Balance after* when the amount is plain and the result is not negative. | script | script |
 
 ### 6.2 Attempts and the Idempotency-Key
 
@@ -147,7 +149,7 @@ instead of charging again. Web: `useAttempt.js`. App: the pay and payment-detail
 | K-02 | While a request is in flight the button is disabled and reads *Processing…*; further taps send nothing, including a second tap that arrives before the screen has redrawn the disabled button. On Confirm, Cancel and Back are disabled too. | script | script |
 | K-03 | No answer (network error, or an answer without a JSON body): the outcome is unknown. A Warning is shown and the primary button becomes **Retry**, which sends the same amount with the same key. | script | script |
 | K-04 | An error answer is definitive and nothing was charged: the attempt ends, and the next confirm creates a new key. | script | script |
-| K-05 | Only a different amount ends an attempt that is still waiting for an answer. Amounts are compared as money (`30` and `30.00` are the same). Going back from Confirm and continuing with the same amount shows *no answer* again and Retry resends the same key; continuing with a different amount starts a new attempt with a new key. Refunds: the field can be edited; the button reads Retry only while it holds the pending amount. | script | script |
+| K-05 | Only a different amount ends an attempt that is still waiting for an answer. Amounts are compared as money (`30` and `30.00` are the same); anything that is not a plain amount, exactly as typed. Going back from Confirm and continuing with the same amount shows *no answer* again and Retry resends the same key; continuing with a different amount starts a new attempt with a new key. Refunds: the field can be edited; the button reads Retry only while it holds the pending amount. | script | script |
 | K-06 | When the API answers `Idempotent-Replayed: true`, the receipt says the payment had already gone through and was not charged again. | script | script |
 | K-07 | Top-ups take no Idempotency-Key (the API accepts none). After no answer the client asks the user to check the balance and offers no Retry, which could add the money twice. | script | script |
 | K-08 | A pending attempt (amount, key and *no answer* state) survives screen rotation and the app's process being killed in the background: reopened, the app shows Confirm with *no answer*, and Retry resends the same key. | n/a (§10) | script |
@@ -156,7 +158,7 @@ instead of charging again. Web: `useAttempt.js`. App: the pay and payment-detail
 
 | ID | Rule | Web | App |
 |---|---|---|---|
-| N-01 | The system Back button or gesture does what the top bar's back does on that screen. On Confirm it returns to the amount step and keeps a pending attempt (K-05). While a request is in flight it does nothing. On a receipt it goes to Home, never back to Confirm, so a payment cannot be confirmed twice by going back. | n/a | script |
+| N-01 | The system Back button or gesture does what the top bar's back does on that screen. On Confirm it returns to the amount step and keeps a pending attempt (K-05). While a request is in flight it does nothing. On a receipt it goes to Home, never back to Confirm, so a payment cannot be confirmed twice by going back. The receipt survives the app's process being killed: reopened, the app shows the receipt, never Confirm. | n/a | script |
 
 ### 6.4 Display
 
@@ -173,7 +175,7 @@ instead of charging again. Web: `useAttempt.js`. App: the pay and payment-detail
 
 | ID | Rule | Web | App |
 |---|---|---|---|
-| L-01 | Nothing is cut off or needs horizontal scrolling on the screen sizes of §5, on every screen. | script | planned |
+| L-01 | Nothing is cut off, overlapped or needs horizontal scrolling on the screen sizes of §5, on every screen, with the longest values the API allows (a 50-character name, a balance of `999,999,999,999.99`). The balance steps down a text style by its length as shown: up to 10 characters *Display/Balance*, up to 14 *Amount/Large*, longer *Title/Large*. A currency that does not fit moves to the next line; a label wraps between words but never shrinks below its longest word; an amount is never broken. | script | planned |
 | L-02 | Every interactive element meets the platform's minimum touch target (§5). | script | planned |
 | L-03 | Every input has a visible label (a placeholder alone is not a label), and icon-only buttons have an accessible name. A field's error is shown under it and announced. | review | review |
 | L-04 | A message that appears after an action is in view without scrolling: it is shown next to the control that caused it, and it scrolls itself into view when it appears. | script | script |
@@ -293,13 +295,13 @@ Each pair of cases tests the same behaviour on both clients:
 | Top up `100` → receipt `100.00` / `100.00`; Home balance `100.00`; one TOPUP of 10000 cents in the ledger | WEB-002 | APP-002 | R-01, D-01 | |
 | From 100.00, pay `30` → Confirm `30.00`, balance after `70.00` → receipt → History's first row `−30.00`; one row in `payments`; one UUID v4 key, sent only on Confirm | WEB-003 | APP-003 | R-04, K-01, D-02 | |
 | Top up `19.99` → shown as `19.99`; the ledger holds 1999 cents | WEB-004 | APP-004 | D-01 | `float_math` |
-| Pay `-1`, `1e3`, `10.555` (one run each) → refused with E-01; nothing moves | WEB-005 | APP-005 | R-02, K-04, E-01 | `negative_amount` (`-1`) |
+| Pay `-1`, `1e3`, `10.555`, ` 5 ` (one run each) → Confirm shows it as typed, with no *Balance after*; refused with E-01; nothing moves | WEB-005 | APP-005 | R-02, R-04, K-04, E-01 | `negative_amount` (`-1`) |
 | Pay more than the balance → refused with E-02; nothing charged; **Change amount** keeps the input | WEB-006 | APP-006 | R-02, K-04, E-02 | |
 | Two taps on **Confirm payment** in quick succession, request held → one request, one row in `payments` | WEB-007 | APP-007 | K-02 | web: mutation `no_in_flight_guard`; app: §9 |
 | The server charges, the response is lost → *no answer* → **Retry** → receipt with `replayed`; both requests carried the same key; one row | WEB-008 | APP-008 | K-03, K-06 | `no_idempotency` |
 | Pay `30`, refund `10` → refunded `10.00`, left `20.00`; refund `25` → E-04; refunds total 1000 cents | WEB-009 | APP-009 | R-03, K-04, E-04 | `refund_overflow` |
 | After a top-up, a payment and a refund, every History row matches the `ledger` table: order, type, amount, balance after | WEB-010 | APP-010 | D-02, D-05 | |
-| Every screen in both screen sizes: nothing cut off, every interactive element at least the platform minimum; a message shown after an action is in view on a 360 × 640 screen | WEB-011 | APP-011 | L-01, L-02, L-04 | |
+| Every screen in both screen sizes, also with a 50-character name and a balance of `999,999,999,999.99`: nothing cut off by the screen or by its card, every interactive element at least the platform minimum; a message shown after an action is in view on a 360 × 640 screen | WEB-011 | APP-011 | L-01, L-02, L-04 | |
 | While processing: Confirm disabled and reading *Processing…*, Cancel and Back disabled; after release, the receipt and one row | WEB-012 | APP-012 | K-02 | web: mutation `confirm_stays_enabled`; app: §9 |
 | Back after no answer: (a) the same amount (as `30.00`) keeps the key, Retry → `replayed`, one row; (b) a new amount gets a new key | WEB-013 | APP-013 | K-05 | web: mutation `back_forgets_the_attempt`; app: §9 |
 | Top-up with no answer: the user is asked to check the balance; no Retry; balance unchanged | WEB-014 | APP-014 | K-07 | web: mutation `top_up_offers_retry`; app: §9 |
@@ -310,6 +312,7 @@ App-only cases:
 |---|---|---|---|---|
 | APP-015 | Process death while the outcome is unknown | Pay `30`; the server processes it, the response is lost → *no answer*. Send the app to the background and kill its process (`am kill`, as Android does under memory pressure). Reopen it → Confirm with *no answer* and Retry → **Retry** → receipt with `replayed`; both requests carried the same key; one row in `payments`. | K-08 | `no_idempotency` |
 | APP-016 | System back | (a) On Confirm, system Back returns to the amount step and keeps the pending attempt. (b) While processing, system Back does nothing. (c) On the payment receipt, system Back goes to Home, not to Confirm; one row in `payments`. | N-01 | |
+| APP-017 | Process death on the receipt | Pay `30` → receipt. Send the app to the background and kill its process. Reopen it → the same receipt (same payment ID and balance after), no **Confirm payment**; system Back goes to Home; one row in `payments`. Also after a replayed receipt (APP-015): reopened, it still says the payment had already gone through. | N-01, K-08 | the defect itself: before 2.3 the reopened app showed Confirm, and confirming again charged a second time (§11) |
 
 `tools/fault_check.py` requires these cases to fail under their defect, on every device profile:
 `float_math` → WEB-004, APP-004; `negative_amount` → WEB-005 and APP-005 (`-1`); `no_idempotency` →
@@ -321,10 +324,10 @@ transfer screen.
 
 | Rule | Web | App | | Rule | Web | App |
 |---|---|---|---|---|---|---|
-| R-01 | WEB-002 | APP-002 | | N-01 | n/a | APP-016 |
+| R-01 | WEB-002 | APP-002 | | N-01 | n/a | APP-016, 017 |
 | R-02 | WEB-005, 006 | APP-005, 006 | | D-01 | WEB-001, 002, 004 | APP-001, 002, 004 |
 | R-03 | WEB-009 | APP-009 | | D-02 | WEB-003, 010 | APP-003, 010 |
-| R-04 | WEB-003 | APP-003 | | D-03 | — | — |
+| R-04 | WEB-003, 005 | APP-003, 005 | | D-03 | — | — |
 | K-01 | WEB-003 | APP-003 | | D-04 | — | — |
 | K-02 | WEB-007, 012 | APP-007, 012 | | D-05 | WEB-010 | APP-010 |
 | K-03 | WEB-008 | APP-008 | | D-06 | — | — |
@@ -339,9 +342,10 @@ transfer screen.
 (hiding the balance), L-03 and the remaining error messages. On the web they were checked once by
 script (§6), but nothing checks them on every change. None of them can move money.
 
-**Rules that live only in the client.** WEB-007, 012, 013, 014 and APP-007, 012, 013, 014, 016 test
+**Rules that live only in the client.** WEB-007, 012, 013, 014 and APP-007, 012, 013, 014, 016, 017 test
 rules that live in the client (the in-flight guard, the disabled button, the pending attempt, the
-missing Retry, system Back), so no server switch can break them. On the web,
+missing Retry, system Back, the saved receipt), so no server switch can break them. APP-017 was
+seen to fail before its fix (§11, 2.3). On the web,
 `tools/web_mutation_check.py` proves they can fail: it changes one piece of the page's code, builds
 that version, serves it to the tests and requires the case to fail.
 
@@ -378,6 +382,7 @@ fail, and this document says so.
 
 | Version | Change |
 |---|---|
+| 2.3 | **The first full QA pass**: every automated check, the device checks, a probe that sends the same 40 inputs through both clients and compares what each shows and what the server did, and screenshots with the longest values the API allows. Fixed: (1) **a double charge in the app**: killed on the payment receipt, the app reopened on Confirm (the step and amount were saved, the receipt was not), and confirming again was a second payment with a new key; the receipt is now saved too (N-01, APP-017). (2) **The API accepted digits from other scripts**: Python's `\d` matched `１００`, which was charged as 100.00; the app showed it as `100.00` on Confirm because Android's `\d` matches them too, while its JVM unit tests could not see this. The API and both clients now write `[0-9]` (VAL-P16, P17, T16, T17; a unit test compiles the app's pattern in Unicode mode, as the device does). (3) **Confirm showed ` 5 ` as `5.00`** with a *Balance after*, and the API then refused it: both clients trimmed spaces, the API does not. *Plain* is now the API's grammar (R-04, WEB-005). (4) **Layout with long values**: on the web, a balance of `999,999,999,999.99` was clipped by its card (the page did not get wider, so the horizontal-scroll check missed it) and a long name squeezed the hide-balance button to 30 px; in the app, *From* was crushed to one letter per line and overlapped by a long name, and *TWD* was stacked into a column next to a 7-digit balance. Both clients now follow the rules in L-01; WEB-011 checks clipping inside cards and the longest values. Also: the app declares backup rules for Android 12 and later. |
 | 2.2 | **Every app screen implemented** (Pay with Confirm and receipt, Payment detail and refunds) and checked on redroid: 43 checks, three runs in a row, through a proxy that holds, loses or blocks requests. K-08 checked by killing the app's process while a payment's outcome was unknown: reopened, it showed Confirm with Retry, and Retry resent the saved key; charged once. Two L-04 defects found and fixed on the app: after a refund, the reloaded refund list pushed the success message below the visible area (the web keeps it in view through the browser's scroll anchoring; Compose has none), and after a refund got no answer, the Retry button sat below the visible area under its message. |
 | 2.1 | **L-04 added.** The app's first Appium run, on a 360 × 640 dp screen, could not find the Start screen's error message: it appeared below the visible area, so the user saw nothing happen after tapping. The web had the same problem at a 360 × 640 viewport; its Playwright tests had passed because a text assertion does not require the element to be in view. Both clients now show the message under the button that caused it and scroll it into view; WEB-011 checks this and fails without the fix. Also: the `item-title` hook on both clients, and the app column updated for Start, Home, History and Top up. |
 | 2.0 | **One specification for two clients.** Moved from `web/SPEC.md` to the repository root. Every rule states whether it applies to the web, the app or both; §5 lists the platform differences; new rules K-08 (a pending attempt survives process death, app) and N-01 (system Back, app); APP-001 to APP-016 planned beside WEB-001 to WEB-014. The web's behaviour is unchanged. |

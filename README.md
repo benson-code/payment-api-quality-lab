@@ -69,11 +69,11 @@ payment-api-quality-lab/
 │   ├── cases.py               CSV loader; case_id, marks and is_run live in the data
 │   └── web.py                 Expected web error texts, copied from SPEC.md
 ├── cases/
-│   └── amount_validation.csv  Amount-format cases (30, one per row)
+│   └── amount_validation.csv  Amount-format cases (34, one per row)
 ├── tests/                     (3) Test case layer
 │   ├── conftest.py            API startup, fixtures, --env / --target_case_ids / --target_marks
-│   ├── test_*.py              95 API tests
-│   └── web/                   34 web UI test runs (Playwright): browser, phones, failure evidence
+│   ├── test_*.py              99 API tests
+│   └── web/                   40 web UI test runs (Playwright): browser, phones, failure evidence
 ├── SPEC.md                    Specification for both clients (web, Android): rules, screens, hooks, cases
 ├── android/                   Native Android app: Kotlin + Jetpack Compose (all screens; Appium suite next)
 ├── web/                       Mobile web front end: React + Vite, served by the API under /app
@@ -134,13 +134,13 @@ Every error response has the form `{"error_code": "...", "message": "..."}`.
 
 ## 3. Test strategy
 
-There are 95 API tests (the web UI tests are described in section 4). Each group starts from the
+There are 99 API tests (the web UI tests are described in section 4). Each group starts from the
 question "if this breaks, what happens to the money?"
 
 | File | Tests | What it guards against |
 |---|---|---|
 | `test_smoke.py` | 2 | Run first after a deployment: the service is up and the main money flow works. With the tests in other files marked `smoke`, the smoke set has 4 tests |
-| `test_validation.py` | 40 | 30 from the CSV: zero, negative, more than two decimal places, scientific notation, a number instead of a string, whitespace, null, boolean. Also Idempotency-Key, wallet and owner validation |
+| `test_validation.py` | 44 | 34 from the CSV: zero, negative, more than two decimal places, scientific notation, a number instead of a string, whitespace, null, boolean, digits from other scripts (`１００`, `٣٠`). Also Idempotency-Key, wallet and owner validation |
 | `test_business.py` | 8 | Paying exactly the balance and one cent more; a failed payment leaves no trace; the single-payment limit at 49,999.99 / 50,000.00 / 50,000.01 |
 | `test_precision.py` | 8 | 0.10 + 0.20; refunds of 33.33 + 33.33 + 33.34 return every cent; the last remaining cent; values such as 19.99 that floating point gets wrong |
 | `test_idempotency.py` | 7 | A retry with the same key charges once; the same key with a different body is rejected; different keys are two legitimate purchases; refund and transfer retries |
@@ -265,7 +265,7 @@ API is not changed.
 .venv/bin/pip install -r requirements-web.txt
 .venv/bin/python -m playwright install chromium
 
-.venv/bin/pytest tests/web                       # 34 runs, about 25 seconds
+.venv/bin/pytest tests/web                       # 40 runs, about 30 seconds
 .venv/bin/python tools/fault_check.py --web-only # planted defects, web cases only
 .venv/bin/python tools/web_mutation_check.py     # page mutations; needs Node on PATH
 ```
@@ -284,7 +284,7 @@ use, and Newman runs it from the command line and in CI.
 | | Postman / Newman | pytest |
 |---|---|---|
 | Purpose | Lets developers and product managers reproduce issues by importing it; exploratory testing; handover | Primary automated regression suite |
-| Coverage | Main flows and representative errors (25 requests), plus amount boundaries (9 CSV rows) | 95 API tests |
+| Coverage | Main flows and representative errors (25 requests), plus amount boundaries (9 CSV rows) | 99 API tests |
 | Cannot do | Query the database; generate concurrency (one request at a time) | — |
 
 **Collection structure**
@@ -453,3 +453,7 @@ Each of these is recorded in the commit history.
 | One test hook read `100.00` on the top-up receipt and `63.00 TWD` on the payment receipt | Listing the hooks for SPEC.md | Every amount hook now holds the number only |
 | On a small phone, the Start screen's error message appeared below the visible area: the user tapped and saw nothing happen | The Android app's first Appium run on a 360 × 640 dp screen could not find the message (UiAutomator sees only what is on screen). The web had the same problem at a 360 × 640 viewport; its Playwright tests had passed, because a text assertion does not require the element to be in view | Both clients show the message under the button that caused it and scroll it into view (SPEC L-04). WEB-011 now checks it on a 360 × 640 viewport and fails without the fix |
 | Two more messages out of view, in the Android app only: after a refund, the reloaded refund list pushed the success message down; after a refund got no answer, Retry sat below its warning | The same Appium checks on the 360 × 640 dp screen. The web keeps the first in view through the browser's scroll anchoring, which Compose does not have | The app reloads before it shows the message, and brings the whole refund form into view when its state changes |
+| The app could charge twice after Android killed it on the payment receipt: it reopened on Confirm with **Confirm payment** enabled, and tapping it was a second payment with a new key | A full QA pass before the app's Appium tests: the app was sent to the background on the receipt and its process killed (`am kill`), as Android does under memory pressure. The server then held two payments | The receipt is saved with the screen's state and shown again when the app is reopened (SPEC.md N-01, APP-017) |
+| The API accepted `１００` (full-width digits) and charged 100.00 | A probe that sends the same 40 inputs through both clients and compares the results: the web showed `１００` on Confirm, the app `100.00` | Python's `\d` matches any script's digits, and so does Android's (ICU), while the app's unit tests run on a JVM where it does not. The API and both clients use `[0-9]`; four CSV cases and a unit test that compiles the app's pattern in Unicode mode |
+| Confirm showed ` 5 ` as `5.00` with a balance after, and the API then refused it | The same probe | Both clients trimmed spaces before deciding whether an amount was plain; the API does not. They now use the API's grammar exactly (WEB-005) |
+| Long values broke the layout: a balance of `999,999,999,999.99` was clipped on the web; in the app, a 50-character name overlapped the *From* label and *TWD* stood in a column | Screenshots with the longest values the API allows. The web's layout check looked only for horizontal scrolling, and a card clips without making the page wider | Both clients step the balance's text style down by length and move the currency to the next line when needed; the app keeps a label at least as wide as its longest word, as a browser does. WEB-011 now checks for content clipped by a card, with the longest values |
