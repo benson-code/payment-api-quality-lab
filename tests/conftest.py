@@ -34,6 +34,30 @@ def pytest_addoption(parser):
     g.addoption("--target_case_ids", default="", help="只跑這些案例編號，逗號分隔")
     g.addoption("--target_marks", default="", help="只跑帶這些標籤的案例，逗號分隔（任一符合即可）")
 
+    a = parser.getgroup("android app (tests/app)")
+    a.addoption("--app", action="store_true",
+                help="也跑 Android App 的 UI 測試：需要裝置或模擬器、Appium 和建置好的 debug APK")
+    a.addoption("--udid", default=os.environ.get("ANDROID_SERIAL"),
+                help="裝置序號（預設是環境變數 ANDROID_SERIAL；只連著一台時自動選它）")
+    a.addoption("--appium-url", default="http://127.0.0.1:4723", help="Appium 伺服器")
+    a.addoption("--apk", default=str(ROOT / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"),
+                help="要測的 APK（debug 版：只有它讀啟動參數 apiBaseUrl）")
+
+
+# ---- Android App 的測試要加 --app 才跑 ----------------------------------------------
+
+def pytest_ignore_collect(collection_path, config):
+    """tests/app 要裝置，預設不收集；連 import 都不做，沒裝 Appium 客戶端的環境（API 的 CI）也不受影響。"""
+    if collection_path == ROOT / "tests" / "app" and not config.getoption("--app"):
+        return True
+    return None
+
+
+def pytest_report_header(config):
+    if not config.getoption("--app"):
+        return "android app tests (tests/app): not collected; they need a device, run with --app"
+    return None
+
 
 # ---- 依案例編號、標籤挑案例 ----------------------------------------------------
 

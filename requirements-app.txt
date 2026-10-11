@@ -1,0 +1,6 @@
+# Android App UI 測試（tests/app）：API 測試的依賴再加 Appium 的 Python 客戶端
+# 另外要有：adb、一台裝置或模擬器、Appium 3 伺服器和 uiautomator2 driver（android/README.md）
+-r requirements.txt
+Appium-Python-Client==6.0.7
+# Appium 客戶端建立在 Selenium 上；也固定版本，CI 和本機才會一樣
+selenium==4.51.0

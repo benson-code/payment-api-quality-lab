@@ -8,7 +8,7 @@ from playwright.sync_api import expect
 from framework.web.pay_page import PayPage
 from framework.web.top_up_page import TopUpPage
 from testdata.factories import funded_wallet
-from testdata.web import ERROR_TEXT
+from testdata.messages import ERROR_TEXT
 
 pytestmark = pytest.mark.web
 

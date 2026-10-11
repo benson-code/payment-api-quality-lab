@@ -4,7 +4,7 @@ from playwright.sync_api import expect
 
 from framework.web.payment_detail_page import PaymentDetailPage
 from testdata.factories import funded_wallet
-from testdata.web import ERROR_TEXT
+from testdata.messages import ERROR_TEXT
 
 pytestmark = [pytest.mark.web, pytest.mark.refund]
 

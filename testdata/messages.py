@@ -1,7 +1,7 @@
-"""網頁測試的預期值，抄自 SPEC.md §6.6。
+"""網頁和 App 測試共用的預期值，抄自 SPEC.md §6.6。
 
-刻意不讀前端的 messages.js：預期值要來自規格，不是來自被測的程式。前端改了文案而規格沒改，
-測試就該紅。
+刻意不讀網頁的 messages.js 或 App 的 Messages.kt：預期值要來自規格，不是來自被測的程式。
+程式改了文案而規格沒改，測試就該紅。
 """
 ERROR_TEXT = {
     "INVALID_AMOUNT": "Enter an amount like 100 or 100.50: more than 0, at most two decimals.",   # E-01

@@ -11,7 +11,9 @@ payment, rounding errors, and half-completed transfers.**
 
 A **mobile web front end** (React) is served by the same API, and **Playwright for Python** tests it
 in the same pytest suite: 14 cases on two phone profiles, checked against the database as well as
-the page.
+the page. A native **Android app** (Kotlin, Jetpack Compose) has the same screens and rules, and
+**Appium** tests it in the same suite, through a test proxy that can hold a request or lose its
+response.
 
 The main flows are also provided as a **Postman collection** for manual use, run by **Newman** in CI.
 A **k6** load test, followed by a database reconciliation, can be triggered on demand.
@@ -37,7 +39,7 @@ switch, so for those CI changes the page's code instead and requires the matchin
 1. [Architecture](#1-architecture)
 2. [System under test](#2-system-under-test)
 3. [Test strategy](#3-test-strategy)
-4. [Web front end and UI tests](#4-web-front-end-and-ui-tests)
+4. [Web front end, Android app and UI tests](#4-web-front-end-android-app-and-ui-tests)
 5. [Postman and Newman](#5-postman-and-newman)
 6. [Load testing (k6)](#6-load-testing-k6)
 7. [Running locally](#7-running-locally)
@@ -61,21 +63,23 @@ payment-api-quality-lab/
 │   ├── base_client.py         BaseClient: base URL, timeout, request logging
 │   ├── wallet_api.py          One method per endpoint
 │   ├── db.py                  Direct SQLite access: data seeding, seven database invariants
-│   └── web/                   Web page objects (one per screen) and network control: hold, lose, block
+│   ├── web/                   Web page objects (one per screen) and network control: hold, lose, block
+│   └── app/                   App screen objects, adb device control, and the test proxy: hold, lose, block
 ├── testdata/                  (2) Test data layer
 │   ├── schemas/*.json         JSON Schemas for every response type
 │   ├── schema.py              Validation that reports every mismatching field
 │   ├── factories.py           Factory functions for wallets and payments
 │   ├── cases.py               CSV loader; case_id, marks and is_run live in the data
-│   └── web.py                 Expected web error texts, copied from SPEC.md
+│   └── messages.py            Expected error texts for both clients, copied from SPEC.md
 ├── cases/
 │   └── amount_validation.csv  Amount-format cases (34, one per row)
 ├── tests/                     (3) Test case layer
 │   ├── conftest.py            API startup, fixtures, --env / --target_case_ids / --target_marks
 │   ├── test_*.py              99 API tests
-│   └── web/                   40 web UI test runs (Playwright): browser, phones, failure evidence
+│   ├── web/                   40 web UI test runs (Playwright): browser, phones, failure evidence
+│   └── app/                   18 app UI test runs (Appium): device, displays, test proxy, failure evidence
 ├── SPEC.md                    Specification for both clients (web, Android): rules, screens, hooks, cases
-├── android/                   Native Android app: Kotlin + Jetpack Compose (all screens; Appium suite next)
+├── android/                   Native Android app: Kotlin + Jetpack Compose
 ├── web/                       Mobile web front end: React + Vite, served by the API under /app
 │   └── src/                   tokens.css (Figma variables), components/ (one per Figma component), screens/
 ├── postman/                   Postman collection (run by Newman in CI)
@@ -134,7 +138,7 @@ Every error response has the form `{"error_code": "...", "message": "..."}`.
 
 ## 3. Test strategy
 
-There are 99 API tests (the web UI tests are described in section 4). Each group starts from the
+There are 99 API tests (the web and app UI tests are described in section 4). Each group starts from the
 question "if this breaks, what happens to the money?"
 
 | File | Tests | What it guards against |
@@ -175,13 +179,13 @@ pytest --target_marks=idempotency,concurrency    # tests with any of these marks
 pytest --target_case_ids=CON-001,VAL-P08         # specific cases
 ```
 
-## 4. Web front end and UI tests
+## 4. Web front end, Android app and UI tests
 
 A mobile-first wallet page (React 19 + Vite) in front of the same API, served by FastAPI under
 `/app`. It exists so that the risks tested at the API level are also tested where a user meets them:
 a double tap, a slow network, a response lost on its way back. There is no login and no transfer
 screen. Its specification is [`SPEC.md`](SPEC.md), which also defines the Android app with the
-same screens and behaviour (in [`android/`](android/README.md): every screen is built; its Appium suite comes next).
+same screens and behaviour (in [`android/`](android/README.md); its Appium tests are described below).
 
 **Screens:** Start (create or open a wallet) · Home and History tabs · Top up · Pay: amount →
 Confirm → receipt · Payment detail with refunds.
@@ -220,7 +224,7 @@ server, `api` and `db` fixtures, its marks and its `--target_case_ids` / `--targ
 - Every case except the layout check (WEB-011) checks the database as well as the page, and every
   case fails on any uncaught JavaScript error.
 - Elements are found by `data-testid` only (SPEC.md §7). Expected texts are copied from the
-  specification (`testdata/web.py`), not read from the front end's own code.
+  specification (`testdata/messages.py`), not read from the front end's own code.
 - A failure leaves a screenshot and a Playwright trace in `reports/web/`; CI uploads them.
 
 | Case | What it checks | Proven to fail by |
@@ -273,6 +277,53 @@ API is not changed.
 Without Playwright, `tests/web` is skipped and pytest prints why. With Playwright but no build,
 every web test fails with "Build it first", so a run in which nothing was tested cannot look like a
 pass.
+
+### Android app UI tests
+
+Appium (UiAutomator2) for Python, in the same pytest suite again: the app tests reuse the API's
+server, `api` and `db` fixtures and the case selection, and each case mirrors a web case (APP-001
+tests what WEB-001 tests).
+
+- Every case runs in two display configurations of one device, 360 × 640 dp and 411 × 914 dp
+  (`wm size` and `wm density`, restored afterwards). The time zone is pinned.
+- **A test proxy instead of request interception.** A native app cannot be intercepted the way a
+  browser can, so the debug build is launched with its API address pointing at
+  `framework/app/proxy.py`, which forwards every request to the API and records its
+  Idempotency-Key. On demand it holds a request, loses its response or blocks it: the same three
+  conditions as the web tests. It listens on 127.0.0.1 only; the device reaches it through
+  `adb reverse`.
+- Each test starts the app fresh (`am start -S`), opens a wallet prepared through the API, and
+  checks the database as well as the screen. A test fails if the app crashed; a failure leaves a
+  screenshot and the UI tree in `reports/app/`.
+- Elements are found by the same hook names as on the web (Compose `testTag`, exposed as resource
+  IDs). Expected texts come from the same `testdata/messages.py`.
+
+| Case | What it checks | Seen to fail with |
+|---|---|---|
+| APP-001 | A new wallet starts at 0.00. The screen shows the wallet ID masked; the test takes the full ID from the answer the proxy recorded | |
+| APP-002 | A top-up reaches the balance and the ledger | |
+| APP-003 | Pay through Confirm to the receipt and History; one UUID v4 key, sent only on Confirm | |
+| APP-004 | A top-up of 19.99 keeps every cent | `float_math` |
+| APP-005 | `-1`, `1e3`, `10.555` and ` 5 ` are shown as typed on Confirm, without a balance after, and refused; nothing moves | `negative_amount` (`-1`); the app's old space trimming put back (` 5 `) |
+| APP-006 | A payment above the balance is refused; *Change amount* keeps the input | |
+
+The failures in the last column were produced by hand, turning the defect on and running the case.
+`tools/fault_check.py` will require them with the next cases, APP-007 to APP-017 (double taps, lost
+responses, refunds, History against the ledger, layout, process death, system Back), together with a
+CI job on Google's emulator.
+
+**Running**
+
+```bash
+.venv/bin/pip install -r requirements-app.txt
+(cd android && ./gradlew assembleDebug)          # the debug build: only it accepts the proxy's address
+appium --address 127.0.0.1 --port 4723           # Appium 3 and the uiautomator2 driver, another terminal
+ANDROID_SERIAL=127.0.0.1:5555 .venv/bin/pytest tests/app --app   # 18 runs, about 2 minutes
+```
+
+The app tests need a device, so they are collected only with `--app`; without it, pytest's header
+says so. With `--app` but no device, no Appium server or no APK, every app test fails and says what
+is missing.
 
 ## 5. Postman and Newman
 
@@ -405,7 +456,7 @@ BUGS=race DB_PATH=wallet.db .venv/bin/uvicorn app.main:app --port 8400   # with 
    against the web cases) and `tools/web_mutation_check.py` (the page mutations).
 5. **Android app (build and unit tests)**: builds the debug app on an x86-64 runner and runs its unit
    tests, including a check that the app's design tokens equal the web's `tokens.css`; uploads the
-   APK. The Appium tests for the app follow once its screens exist (SPEC.md §8).
+   APK. The Appium tests (section 4) run locally for now; a CI job on Google's emulator comes next.
 
 A separate, manually triggered `load.yml` runs the k6 load test followed by the reconciliation
 (section 6).

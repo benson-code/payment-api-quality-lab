@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Version | 2.3: defects from the first full QA pass fixed (see §11) |
+| Version | 2.4: the app's first Appium cases, APP-001 to APP-006 (see §11) |
 | Date | 2026-10-11 |
 | Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules were checked on redroid (Android 14, 360 × 640 dp) with an Appium script, except layout (L-01, L-02), which waits for APP-011. A rule stays *planned* until it is checked in full |
 | Code | Web: `web/src/` (React 19 + Vite), served by the API under `/app`. App: `android/` (Kotlin, Jetpack Compose) |
-| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-014). App: Appium for Python, `tests/app/` (APP-001 to APP-017), planned |
+| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-014). App: Appium for Python, `tests/app/`: APP-001 to APP-006 implemented, APP-007 to APP-017 planned |
 
 ## 1. Purpose
 
@@ -280,12 +280,16 @@ not read from either client's code.
 emulates the viewport, touch and user agent; it is not Safari). Time zone pinned to Asia/Taipei.
 Network conditions are produced with Playwright's request interception.
 
-**App (planned).** Appium (UiAutomator2) on redroid locally and on Google's emulator in CI, in the
-two display configurations of §5. Time zone pinned on the device. Native apps cannot be intercepted
-like a browser, so network conditions come from a **test proxy** between the app and the API, with
-the same three modes as the web tests: *hold* (the request waits until released), *lose response*
-(the server processes the request, the app sees a dropped connection) and *block* (the request never
-reaches the server). The proxy also records the Idempotency-Key of every request.
+**App.** Appium (UiAutomator2) on redroid locally (Google's emulator in CI is planned), in the two
+display configurations of §5, set with `wm size` and `wm density` and restored afterwards. Time zone
+pinned on the device. Native apps cannot be intercepted like a browser, so network conditions come
+from a **test proxy** (`framework/app/proxy.py`) between the app and the API, with the same three
+modes as the web tests: *hold* (the request waits until released), *lose response* (the server
+processes the request, the app sees a dropped connection) and *block* (the request never reaches
+the server). The proxy also records the Idempotency-Key and the answer of every request: APP-001
+takes the full wallet ID, which the screen shows masked (D-04), from the answer it recorded. Each
+test starts the app fresh and fails if the app crashed. The app tests need a device, so pytest
+collects them only with `--app`.
 
 Each pair of cases tests the same behaviour on both clients:
 
@@ -382,6 +386,7 @@ fail, and this document says so.
 
 | Version | Change |
 |---|---|
+| 2.4 | **APP-001 to APP-006 implemented** in `tests/app/`, with screen objects in `framework/app/` named after the web's page objects and the test proxy described in §8. Each case runs in both display configurations: 18 runs, passing three times in a row on redroid. Seen to fail by hand: APP-004 with `float_math` (the receipt showed `19.98`), APP-005 with `negative_amount` (the payment of `-1` went through and the balance rose to `101.00`), and APP-005's ` 5 ` case with the app's old space trimming put back (Confirm showed `5.00`). `tools/fault_check.py` gains the app cases with APP-007 to APP-017. |
 | 2.3 | **The first full QA pass**: every automated check, the device checks, a probe that sends the same 40 inputs through both clients and compares what each shows and what the server did, and screenshots with the longest values the API allows. Fixed: (1) **a double charge in the app**: killed on the payment receipt, the app reopened on Confirm (the step and amount were saved, the receipt was not), and confirming again was a second payment with a new key; the receipt is now saved too (N-01, APP-017). (2) **The API accepted digits from other scripts**: Python's `\d` matched `１００`, which was charged as 100.00; the app showed it as `100.00` on Confirm because Android's `\d` matches them too, while its JVM unit tests could not see this. The API and both clients now write `[0-9]` (VAL-P16, P17, T16, T17; a unit test compiles the app's pattern in Unicode mode, as the device does). (3) **Confirm showed ` 5 ` as `5.00`** with a *Balance after*, and the API then refused it: both clients trimmed spaces, the API does not. *Plain* is now the API's grammar (R-04, WEB-005). (4) **Layout with long values**: on the web, a balance of `999,999,999,999.99` was clipped by its card (the page did not get wider, so the horizontal-scroll check missed it) and a long name squeezed the hide-balance button to 30 px; in the app, *From* was crushed to one letter per line and overlapped by a long name, and *TWD* was stacked into a column next to a 7-digit balance. Both clients now follow the rules in L-01; WEB-011 checks clipping inside cards and the longest values. Also: the app declares backup rules for Android 12 and later. |
 | 2.2 | **Every app screen implemented** (Pay with Confirm and receipt, Payment detail and refunds) and checked on redroid: 43 checks, three runs in a row, through a proxy that holds, loses or blocks requests. K-08 checked by killing the app's process while a payment's outcome was unknown: reopened, it showed Confirm with Retry, and Retry resent the saved key; charged once. Two L-04 defects found and fixed on the app: after a refund, the reloaded refund list pushed the success message below the visible area (the web keeps it in view through the browser's scroll anchoring; Compose has none), and after a refund got no answer, the Retry button sat below the visible area under its message. |
 | 2.1 | **L-04 added.** The app's first Appium run, on a 360 × 640 dp screen, could not find the Start screen's error message: it appeared below the visible area, so the user saw nothing happen after tapping. The web had the same problem at a 360 × 640 viewport; its Playwright tests had passed because a text assertion does not require the element to be in view. Both clients now show the message under the button that caused it and scroll it into view; WEB-011 checks this and fails without the fix. Also: the `item-title` hook on both clients, and the app column updated for Start, Home, History and Top up. |

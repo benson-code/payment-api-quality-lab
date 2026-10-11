@@ -1,9 +1,9 @@
 # Wallet — Android app
 
 The native Android client of the wallet: Kotlin and Jetpack Compose, the same screens and behaviour
-as the web page (`../web/`), both defined by [`../SPEC.md`](../SPEC.md). Status: project skeleton and
-every screen implemented and checked on redroid against SPEC.md (43 checks through a proxy); the
-Appium test suite, APP-001 to APP-016, comes next.
+as the web page (`../web/`), both defined by [`../SPEC.md`](../SPEC.md). Status: every screen
+implemented. Its Appium tests live with the rest of the suite, in [`../tests/app/`](../tests/app/)
+(APP-001 to APP-006 so far; how to run them: the main README, section 4).
 
 ## Build
 
