@@ -71,6 +71,8 @@ export function useAttempt({ idempotent, send, onDone }) {
   };
 }
 
+// Amounts compared as money ("30" is "30.00"); anything that is not a plain amount, exactly as typed,
+// since that is how the API reads it.
 export function sameAmount(a, b) {
-  return (normalizeAmount(a) ?? a.trim()) === (normalizeAmount(b) ?? b.trim());
+  return (normalizeAmount(a) ?? a) === (normalizeAmount(b) ?? b);
 }

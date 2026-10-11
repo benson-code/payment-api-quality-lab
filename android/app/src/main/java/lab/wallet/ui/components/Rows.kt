@@ -3,11 +3,13 @@ package lab.wallet.ui.components
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -15,10 +17,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import lab.wallet.R
@@ -102,16 +106,22 @@ private fun RowScope.TransactionContent(title: String, time: String, amount: Str
  */
 @Composable
 fun ReceiptRow(label: String, value: String, valueTestTag: String? = null, suffix: String? = null) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(WalletSpacing.lg),
-        modifier = Modifier.fillMaxWidth().padding(vertical = WalletSpacing.md),
-    ) {
-        Text(label, style = WalletType.body, color = WalletColors.textSecondary, modifier = Modifier.weight(1f))
-        Row {
-            Text(value, style = WalletType.bodyStrong.copy(fontFeatureSettings = "tnum"), color = WalletColors.textPrimary,
-                modifier = if (valueTestTag != null) Modifier.testTag(valueTestTag) else Modifier)
-            if (suffix != null) Text(" $suffix", style = WalletType.bodyStrong, color = WalletColors.textPrimary)
+    // The web's flex layout: the value keeps its width when it can, the label takes the rest and wraps
+    // between words, but never narrower than its longest word. Compose has no such floor: with the label
+    // simply weighted, a 50-character name crushed "From" to one letter per line, over the name (QA pass).
+    val measurer = rememberTextMeasurer()
+    val labelFloor = with(LocalDensity.current) {
+        label.split(" ").maxOf { measurer.measure(it, WalletType.body).size.width }.toDp()
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = WalletSpacing.md)) {
+        val valueMax = maxWidth - labelFloor - WalletSpacing.lg
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(WalletSpacing.lg)) {
+            Text(label, style = WalletType.body, color = WalletColors.textSecondary, modifier = Modifier.weight(1f))
+            Row(Modifier.widthIn(max = valueMax)) {
+                Text(value, style = WalletType.bodyStrong.copy(fontFeatureSettings = "tnum"), color = WalletColors.textPrimary,
+                    textAlign = TextAlign.End, modifier = if (valueTestTag != null) Modifier.testTag(valueTestTag) else Modifier)
+                if (suffix != null) Text(" $suffix", style = WalletType.bodyStrong, color = WalletColors.textPrimary, softWrap = false)
+            }
         }
     }
 }

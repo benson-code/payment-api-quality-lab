@@ -14,6 +14,8 @@ VAL-P12,validation,Y,payment,非數字,"""abc""",400,INVALID_AMOUNT
 VAL-P13,validation,Y,payment,空字串,"""""",400,INVALID_AMOUNT
 VAL-P14,validation,Y,payment,null,null,400,INVALID_AMOUNT
 VAL-P15,validation,Y,payment,布林值,true,400,INVALID_AMOUNT
+VAL-P16,validation,Y,payment,全形數字,"""１００""",400,INVALID_AMOUNT
+VAL-P17,validation,Y,payment,阿拉伯-印度數字,"""٣٠""",400,INVALID_AMOUNT
 VAL-T01,validation|boundary,Y,topup,最小金額 0.01,"""0.01""",201,
 VAL-T02,validation,Y,topup,一位小數 10.5,"""10.5""",201,
 VAL-T03,validation,Y,topup,兩位小數 10.50,"""10.50""",201,
@@ -29,4 +31,6 @@ VAL-T12,validation,Y,topup,非數字,"""abc""",400,INVALID_AMOUNT
 VAL-T13,validation,Y,topup,空字串,"""""",400,INVALID_AMOUNT
 VAL-T14,validation,Y,topup,null,null,400,INVALID_AMOUNT
 VAL-T15,validation,Y,topup,布林值,true,400,INVALID_AMOUNT
+VAL-T16,validation,Y,topup,全形數字,"""１００""",400,INVALID_AMOUNT
+VAL-T17,validation,Y,topup,阿拉伯-印度數字,"""٣٠""",400,INVALID_AMOUNT
 VAL-X01,validation,N,payment,範例：is_run=N 的案例不會被收進來,"""1""",201,

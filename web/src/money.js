@@ -7,6 +7,15 @@ export function displayAmount(value) {
   return `${negative ? '-' : ''}${grouped}.${cents}`;
 }
 
+// The balance's text style: one step smaller for long amounts, two for the longest, so that the
+// largest balance the API allows (999,999,999,999.99) fits a 360 px phone (SPEC L-01). Counted on
+// the shown text, the same rule as the app's Money.balanceStyle.
+export function balanceStyle(shown) {
+  if (shown.length <= 10) return 't-display';     // Display/Balance, up to 999,999.99
+  if (shown.length <= 14) return 't-amount';      // Amount/Large, up to 999,999,999.99
+  return 't-title-lg';                             // Title/Large
+}
+
 // "100.50" -> 10050 and back, for arithmetic on amounts without floating point.
 export function toCents(value) {
   const negative = value.startsWith('-');
@@ -28,8 +37,8 @@ export function signedAmount(value) {
 }
 
 // What the user typed, as a two-decimal amount ("30" -> "30.00"), or null if it is not a plain
-// amount. Display only: the page never decides whether an amount is valid, the API does.
+// amount. Display only: the page never decides whether an amount is valid, the API does. "Plain" is
+// the API's own grammar, so spaces are not trimmed: " 5 " shown as 5.00 on Confirm was then refused.
 export function normalizeAmount(typed) {
-  const value = typed.trim();
-  return /^\d+(\.\d{1,2})?$/.test(value) ? fromCents(toCents(value)) : null;
+  return /^[0-9]+(\.[0-9]{1,2})?$/.test(typed) ? fromCents(toCents(typed)) : null;
 }

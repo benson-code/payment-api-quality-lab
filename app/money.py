@@ -10,9 +10,10 @@ from decimal import Decimal
 from app import bugs
 from app.errors import ApiError
 
-# 整數最多 12 位，小數最多 2 位；不接受正負號、空白、科學記號
-AMOUNT_RE = re.compile(r"\d{1,12}(\.\d{1,2})?")
-BUGGY_SIGNED_RE = re.compile(r"-?\d{1,12}(\.\d{1,2})?")        # bug: negative_amount
+# 整數最多 12 位，小數最多 2 位；不接受正負號、空白、科學記號。
+# 寫 [0-9] 不寫 \d：Python 的 \d 也比對全形「１００」、阿拉伯-印度數字「٣٠」等 Unicode 數字（VAL-P16/17）
+AMOUNT_RE = re.compile(r"[0-9]{1,12}(\.[0-9]{1,2})?")
+BUGGY_SIGNED_RE = re.compile(r"-?[0-9]{1,12}(\.[0-9]{1,2})?")        # bug: negative_amount
 
 
 def parse_amount(raw: object) -> int:

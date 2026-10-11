@@ -4,9 +4,9 @@ from __future__ import annotations
 from framework.wallet_api import WalletAPI
 
 
-def funded_wallet(api: WalletAPI, amount: str = "100.00") -> str:
+def funded_wallet(api: WalletAPI, amount: str = "100.00", owner: str = "test-user") -> str:
     """透過 API 建錢包並儲值，回傳 wallet_id。"""
-    r = api.create_wallet()
+    r = api.create_wallet(owner)
     assert r.status_code == 201, r.text
     wallet_id = r.json()["wallet_id"]
     if amount != "0.00":

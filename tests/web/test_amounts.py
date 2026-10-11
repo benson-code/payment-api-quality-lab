@@ -31,12 +31,16 @@ def test_top_up_19_99_keeps_every_cent(page, app_url, api, db):
     pytest.param("-1", id="negative", marks=pytest.mark.negative),   # 埋 bug：negative_amount
     pytest.param("1e3", id="scientific"),
     pytest.param("10.555", id="three-decimals"),
+    # 前後有空白：API 不接受，所以確認頁也不能把它顯示成 5.00、算出付款後餘額（QA 時發現兩端都會）
+    pytest.param(" 5 ", id="spaces"),
 ])
 @pytest.mark.case_id("WEB-005")
 def test_invalid_amount_is_refused_and_nothing_moves(page, app_url, api, db, amount):
     wallet = funded_wallet(api, "100.00")
 
     confirm = PayPage(page, app_url).open(wallet).continue_with(amount)
+    # R-04：不是 API 會接受的寫法，就照輸入顯示，不算付款後餘額
+    expect(confirm.tid("confirm-balance-after")).to_have_count(0)
     confirm.confirm()
 
     expect(confirm.tid("error-message")).to_have_text(ERROR_TEXT["INVALID_AMOUNT"])

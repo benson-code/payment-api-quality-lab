@@ -172,8 +172,12 @@ button { font: inherit; color: inherit; }
 
 /* ---- Balance card ------------------------------------------------------------------------- */
 
-.balance-head { display: flex; align-items: center; justify-content: space-between; margin-right: -12px; }
-.balance-row { display: flex; align-items: baseline; gap: var(--spacing-sm); }
+.balance-head { display: flex; align-items: center; justify-content: space-between; gap: var(--spacing-sm); margin-right: -12px; }
+.balance-head > [data-testid="owner"] { min-width: 0; overflow-wrap: anywhere; }
+.balance-head .icon-button { flex-shrink: 0; }   /* a long name must not squeeze the button below 44 px */
+/* The currency moves to the next line rather than being pushed out of the card */
+.balance-row { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--spacing-sm); }
+.balance-row > [data-testid="balance"] { font-variant-numeric: tabular-nums; }
 .balance-row .icon-button { color: var(--color-icon-muted); }
 
 /* ---- Quick action ------------------------------------------------------------------------- */

@@ -1,6 +1,7 @@
 package lab.wallet.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
@@ -24,6 +25,13 @@ import lab.wallet.ui.theme.WalletColors
 import lab.wallet.ui.theme.WalletSpacing
 import lab.wallet.ui.theme.WalletType
 
+/** The balance's text style, stepped down for long amounts (SPEC L-01, Money.balanceStyle). */
+private fun balanceStyle(shown: String) = when (Money.balanceStyle(shown)) {
+    "Display/Balance" -> WalletType.displayBalance
+    "Amount/Large" -> WalletType.amountLarge
+    else -> WalletType.titleLarge.copy(fontFeatureSettings = "tnum")
+}
+
 /**
  * Figma: Balance card (Hidden = False | True). The eye button hides the balance (SPEC D-06); the choice
  * is not kept across screens. The wallet ID is shown masked (D-04).
@@ -46,10 +54,13 @@ fun BalanceCard(wallet: Wallet) {
                 )
             }
         }
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(WalletSpacing.sm)) {
-            Text(if (hidden) "••••••" else Money.display(wallet.balance), style = WalletType.displayBalance,
-                color = WalletColors.textPrimary, modifier = Modifier.alignByBaseline().testTag("balance"))
-            Text(wallet.currency, style = WalletType.bodyStrong, color = WalletColors.textSecondary, modifier = Modifier.alignByBaseline())
+        // The currency moves to the next line rather than being squeezed into a column (SPEC L-01)
+        val shown = if (hidden) "••••••" else Money.display(wallet.balance)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(WalletSpacing.sm)) {
+            Text(shown, style = balanceStyle(shown), color = WalletColors.textPrimary,
+                modifier = Modifier.alignByBaseline().testTag("balance"))
+            Text(wallet.currency, style = WalletType.bodyStrong, color = WalletColors.textSecondary, softWrap = false,
+                modifier = Modifier.alignByBaseline())
         }
         Row {
             Text("Available balance · ", style = WalletType.caption, color = WalletColors.textSecondary)

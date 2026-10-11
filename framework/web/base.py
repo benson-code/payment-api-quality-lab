@@ -35,9 +35,17 @@ class WebPage:
 
         horizontal_scroll  頁面比螢幕寬，要左右捲動
         small_targets      小於 44 x 44 CSS px 的按鈕或連結（觸控目標太小，手指點不準）
+        clipped            超出所在卡片的文字或元素：卡片會把它裁掉，頁面卻不會變寬，
+                           所以 horizontal_scroll 看不出來（最大金額的餘額就是這樣被裁掉的）
         """
         return self.page.evaluate("""() => ({
             horizontal_scroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+            clipped: [...document.querySelectorAll('.card *')]
+                .filter(e => {
+                    const card = e.closest('.card').getBoundingClientRect(), r = e.getBoundingClientRect();
+                    return r.width > 0 && (r.left < card.left - 0.5 || r.right > card.right + 0.5);
+                })
+                .map(e => `${e.dataset.testid || e.tagName.toLowerCase()} "${e.textContent.trim().slice(0, 24)}"`),
             small_targets: [...document.querySelectorAll('a, button')]
                 .map(e => ({ el: e.dataset.testid || e.textContent.trim(), r: e.getBoundingClientRect() }))
                 .filter(x => x.r.width < 44 || x.r.height < 44)

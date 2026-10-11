@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import java.util.regex.Pattern
 import org.junit.Test
 
 class MoneyTest {
@@ -38,12 +39,33 @@ class MoneyTest {
     }
 
     @Test
+    fun longBalancesStepDownTheTextStyle() {
+        assertEquals("Display/Balance", Money.balanceStyle("999,999.99"))
+        assertEquals("Display/Balance", Money.balanceStyle("••••••"))
+        assertEquals("Amount/Large", Money.balanceStyle("1,000,000.00"))
+        assertEquals("Amount/Large", Money.balanceStyle("999,999,999.99"))
+        assertEquals("Title/Large", Money.balanceStyle("1,000,000,000.00"))
+        assertEquals("Title/Large", Money.balanceStyle("999,999,999,999.99"))
+    }
+
+    @Test
+    fun plainAmountsAreAsciiDigitsEvenUnderAndroidsUnicodeRegex() {
+        // On the device, \d matches any Unicode digit (Android's regex engine is ICU); on the JVM running
+        // this test it matches 0-9 only. Compiling the pattern in Unicode mode reproduces the device, where
+        // "１００" was shown on Confirm as 100.00 (found in the QA pass; the API now refuses it, VAL-P16).
+        val onDevice = Pattern.compile(Money.PLAIN.pattern, Pattern.UNICODE_CHARACTER_CLASS)
+        for (other in listOf("１００", "٣٠", "10０", "１.５０")) assertFalse(other, onDevice.matcher(other).matches())
+        assertTrue(onDevice.matcher("100.50").matches())
+    }
+
+    @Test
     fun normalizeAcceptsOnlyPlainAmounts() {
         assertEquals("30.00", Money.normalize("30"))
-        assertEquals("30.50", Money.normalize(" 30.5 "))
+        assertEquals("30.50", Money.normalize("30.5"))
         assertEquals("0.01", Money.normalize("0.01"))
-        // The client does not validate (R-02): these go to the API as typed, and Confirm shows them as typed
-        for (notPlain in listOf("", "-1", "1e3", "10.555", "1,000", "abc", ".5", "5.")) {
+        // The client does not validate (R-02): these go to the API as typed, and Confirm shows them as typed.
+        // Spaces included: the API refuses " 30.5 ", so Confirm must not show it as 30.50.
+        for (notPlain in listOf("", "-1", "1e3", "10.555", "1,000", "abc", ".5", "5.", " 30.5 ", "5 ", " 5")) {
             assertNull(notPlain, Money.normalize(notPlain))
         }
     }
@@ -51,7 +73,7 @@ class MoneyTest {
     @Test
     fun sameAmountComparesMoneyNotText() {
         assertTrue(Money.sameAmount("30", "30.00"))
-        assertTrue(Money.sameAmount(" 30.5", "30.50"))
+        assertFalse(Money.sameAmount(" 30.5", "30.50"))  // the API refuses " 30.5": not the same payment
         assertFalse(Money.sameAmount("30", "20"))
         assertTrue(Money.sameAmount("1e3", "1e3"))       // not plain: compared as typed
         assertFalse(Money.sameAmount("1e3", "1000"))

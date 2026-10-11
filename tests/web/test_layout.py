@@ -1,5 +1,5 @@
-"""WEB-011：每個畫面在兩種手機上都不能左右捲動，按鈕和連結至少 44 x 44 px（L-01、L-02），
-操作之後出現的訊息要在看得到的地方（L-04）。"""
+"""WEB-011：每個畫面在兩種手機上都不能左右捲動、沒有被卡片裁掉的內容，按鈕和連結至少
+44 x 44 px（L-01、L-02），操作之後出現的訊息要在看得到的地方（L-04）。"""
 import pytest
 from playwright.sync_api import expect
 
@@ -30,12 +30,37 @@ def test_every_screen_fits_the_phone(page, app_url, api):
         "receipt": lambda: PayPage(page, app_url).open(wallet).pay("10"),
         "payment detail": lambda: PaymentDetailPage(page, app_url).open(wallet, payment_id),
     }
+    problems = problems_on(screens)
+    assert not problems, problems
+
+
+@pytest.mark.case_id("WEB-011")
+def test_the_largest_amounts_and_a_long_name_fit(page, app_url, api):
+    """API 允許的最大金額（整數 12 位）和 50 個字的名稱。QA 時發現：餘額 999,999,999,999.99
+    被卡片裁掉，只看得到 999,999,999,999；頁面沒有變寬，所以原本的檢查抓不到。"""
+    wallet = funded_wallet(api, "999999999999.99", owner="Alexandria Montgomery-Fitzgerald Wellington Smith")
+    payment_id = api.pay(wallet, "0.01").json()["payment_id"]
+
+    screens = {
+        "home": lambda: HomePage(page, app_url).open(wallet),
+        "history": lambda: HistoryPage(page, app_url).open(wallet),
+        "confirm": lambda: PayPage(page, app_url).open(wallet).continue_with("0.01"),
+        "receipt": lambda: PayPage(page, app_url).open(wallet).pay("0.01"),
+        "payment detail": lambda: PaymentDetailPage(page, app_url).open(wallet, payment_id),
+    }
+    on_phone = problems_on(screens)
+    page.set_viewport_size({"width": 360, "height": 640})
+    on_small = problems_on(screens)
+    assert not on_phone and not on_small, {"phone": on_phone, "360x640": on_small}
+
+
+def problems_on(screens) -> dict:
     problems = {}
     for name, show in screens.items():
         found = show().layout_problems()
-        if found["horizontal_scroll"] or found["small_targets"]:
+        if any(found.values()):
             problems[name] = found
-    assert not problems, problems
+    return problems
 
 
 @pytest.mark.case_id("WEB-011")

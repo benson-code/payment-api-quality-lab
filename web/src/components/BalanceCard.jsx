@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { maskId } from '../format.js';
-import { displayAmount } from '../money.js';
+import { balanceStyle, displayAmount } from '../money.js';
 import Icon from './Icon.jsx';
 
 // Figma: Balance card (Hidden=False | True). The eye button hides the balance, as a banking app
 // does in a public place; the wallet ID is shown partly masked.
 export default function BalanceCard({ wallet }) {
   const [hidden, setHidden] = useState(false);
+  const shown = hidden ? '••••••' : displayAmount(wallet.balance);
   return (
     <section className="card card-tight" aria-label="Balance">
       <div className="balance-head">
@@ -18,7 +19,7 @@ export default function BalanceCard({ wallet }) {
         </button>
       </div>
       <p className="balance-row">
-        <span className="t-display" data-testid="balance">{hidden ? '••••••' : displayAmount(wallet.balance)}</span>
+        <span className={balanceStyle(shown)} data-testid="balance">{shown}</span>
         <span className="t-body-strong c-secondary">{wallet.currency}</span>
       </p>
       <p className="t-caption c-secondary">

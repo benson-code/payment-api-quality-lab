@@ -48,6 +48,9 @@ import lab.wallet.ui.theme.WalletType
  * K-08: the step, the amount and a pending attempt (amount and key) are kept in the SavedStateHandle,
  * so they survive the app's process being killed in the background. Reopened, the app shows Confirm
  * with "no answer" and Retry resends the saved key: the web cannot do this (SPEC.md §10).
+ *
+ * N-01: the receipt is kept there too. Without it, a process killed on the receipt reopened on Confirm,
+ * ready to send the same amount again with a new key: a second payment (found in the QA pass, APP-017).
  */
 class PayViewModel(private val api: ApiClient, private val walletId: String, private val saved: SavedStateHandle) : ViewModel() {
     val attempt = Attempt(idempotent = true)
@@ -61,6 +64,16 @@ class PayViewModel(private val api: ApiClient, private val walletId: String, pri
     init {
         val pendingAmount = saved.get<String>(PENDING_AMOUNT)
         if (pendingAmount != null) attempt.restore(pendingAmount, saved.get<String>(PENDING_KEY))
+        if (step.value == STEP_RECEIPT) {
+            val receipt = restoreReceipt()
+            if (receipt != null) {
+                _result.value = receipt
+            } else {
+                // Never fall back to Confirm from a receipt: without its fields, start again from the amount step
+                saved[STEP] = STEP_AMOUNT
+                saved[AMOUNT] = ""
+            }
+        }
         viewModelScope.launch {
             attempt.state.collect { state ->
                 // A request in flight or without an answer may have been charged: keep its key until the outcome is known
@@ -94,8 +107,30 @@ class PayViewModel(private val api: ApiClient, private val walletId: String, pri
     fun confirm() {
         viewModelScope.launch {
             val r = attempt.submit(amount.value) { a, key -> api.pay(walletId, a, key!!) }
-            if (r is ApiResult.Ok) _result.value = r
+            if (r is ApiResult.Ok) {
+                saveReceipt(r)
+                _result.value = r
+            }
         }
+    }
+
+    /** What the receipt shows, saved before it is shown: a payment that went through is never offered again. */
+    private fun saveReceipt(ok: ApiResult.Ok<Payment>) {
+        val p = ok.value
+        saved[RECEIPT_ID] = p.paymentId
+        saved[RECEIPT_AMOUNT] = p.amount
+        saved[RECEIPT_CREATED] = p.createdAt
+        saved[RECEIPT_BALANCE] = p.balanceAfter
+        saved[RECEIPT_REPLAYED] = ok.replayed
+        saved[STEP] = STEP_RECEIPT
+    }
+
+    private fun restoreReceipt(): ApiResult.Ok<Payment>? {
+        val id = saved.get<String>(RECEIPT_ID) ?: return null
+        val payment = Payment(id, walletId, saved.get<String>(RECEIPT_AMOUNT) ?: return null, refunded = "0.00",
+            createdAt = saved.get<String>(RECEIPT_CREATED) ?: return null, balanceAfter = saved.get<String>(RECEIPT_BALANCE),
+            refunds = emptyList())
+        return ApiResult.Ok(payment, replayed = saved.get<Boolean>(RECEIPT_REPLAYED) ?: false)
     }
 
     companion object {
@@ -103,8 +138,14 @@ class PayViewModel(private val api: ApiClient, private val walletId: String, pri
         private const val STEP = "step"
         private const val PENDING_AMOUNT = "pendingAmount"
         private const val PENDING_KEY = "pendingKey"
+        private const val RECEIPT_ID = "receiptPaymentId"
+        private const val RECEIPT_AMOUNT = "receiptAmount"
+        private const val RECEIPT_CREATED = "receiptCreatedAt"
+        private const val RECEIPT_BALANCE = "receiptBalanceAfter"
+        private const val RECEIPT_REPLAYED = "receiptReplayed"
         const val STEP_AMOUNT = "amount"
         const val STEP_CONFIRM = "confirm"
+        const val STEP_RECEIPT = "receipt"
     }
 }
 
