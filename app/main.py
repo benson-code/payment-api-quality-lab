@@ -12,11 +12,13 @@ from fastapi import Depends, FastAPI, Header, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from app import bugs, service
 from app.db import connect, init_db
 from app.errors import ApiError
+from app.responses import (Health, Payment, PaymentDetail, Refund, TopUp, Transactions, Transfer, Wallet,
+                           errors, ok)
 
 DB_PATH = os.environ.get("DB_PATH", "wallet.db")
 init_db(DB_PATH)
@@ -50,51 +52,75 @@ def get_conn() -> Iterator:
 
 # ---- 請求格式 ------------------------------------------------------------------
 # amount 宣告成 object 而不是 str：讓「傳數字」這種錯誤進到 parse_amount，
-# 回傳跟其他金額錯誤一樣的 INVALID_AMOUNT，而不是 pydantic 的通用訊息
+# 回傳跟其他金額錯誤一樣的 INVALID_AMOUNT，而不是 pydantic 的通用訊息。
+# API 文件上照合約寫成必填的字串（json_schema_extra 只影響文件，不影響收到什麼）。
+
+AMOUNT = Field(default=None, json_schema_extra={"type": "string", "examples": ["100.50"]})
+WALLET_ID = Field(default=None, json_schema_extra={"type": "string", "examples": ["w_2b440cba3a8c4d27"]})
+
+
+def required(*fields: str) -> ConfigDict:
+    return ConfigDict(json_schema_extra={"required": list(fields)})
+
 
 class CreateWallet(BaseModel):
     owner: str
 
 
 class AmountBody(BaseModel):
-    amount: object = None
+    model_config = required("amount")
+    amount: object = AMOUNT
 
 
 class PaymentBody(BaseModel):
-    wallet_id: object = None
-    amount: object = None
+    model_config = required("wallet_id", "amount")
+    wallet_id: object = WALLET_ID
+    amount: object = AMOUNT
 
 
 class TransferBody(BaseModel):
-    from_wallet_id: object = None
-    to_wallet_id: object = None
-    amount: object = None
+    model_config = required("from_wallet_id", "to_wallet_id", "amount")
+    from_wallet_id: object = WALLET_ID
+    to_wallet_id: object = WALLET_ID
+    amount: object = AMOUNT
 
 
 # ---- 路由 ----------------------------------------------------------------------
+# responses：寫進 API 文件的回應格式和錯誤（app/responses.py）。response_model=None：
+# FastAPI 不拿任何模型去驗證或改寫實際回應，回應照 service.py 組出來的原樣送出。
 
-@app.get("/health")
+KEY_ERRORS = "IDEMPOTENCY_KEY_REQUIRED, INVALID_REQUEST, INVALID_AMOUNT"
+
+
+@app.get("/health", response_model=None, responses=ok(Health))
 def health() -> dict:
     # 回報目前開了哪些 bug：CI 的「證明測試會紅」那一輪，要先確認開關真的有打開
     return {"status": "ok", "bugs": sorted(bugs.ACTIVE)}
 
 
-@app.post("/wallets", status_code=201)
+@app.post("/wallets", status_code=201, response_model=None,
+          responses={**ok(Wallet, 201), **errors({400: "INVALID_OWNER, INVALID_REQUEST"})})
 def create_wallet(body: CreateWallet, conn=Depends(get_conn)) -> dict:
     return service.create_wallet(conn, body.owner)
 
 
-@app.get("/wallets/{wallet_id}")
+@app.get("/wallets/{wallet_id}", response_model=None,
+         responses={**ok(Wallet), **errors({404: "WALLET_NOT_FOUND"})})
 def get_wallet(wallet_id: str, conn=Depends(get_conn)) -> dict:
     return service.wallet_view(service.get_wallet_row(conn, wallet_id))
 
 
-@app.post("/wallets/{wallet_id}/topups", status_code=201)
+@app.post("/wallets/{wallet_id}/topups", status_code=201, response_model=None,
+          responses={**ok(TopUp, 201),
+                     **errors({400: "INVALID_AMOUNT, INVALID_REQUEST", 404: "WALLET_NOT_FOUND"})})
 def top_up(wallet_id: str, body: AmountBody, conn=Depends(get_conn)) -> dict:
     return service.top_up(conn, wallet_id, body.amount)
 
 
-@app.post("/payments", status_code=201)
+@app.post("/payments", status_code=201, response_model=None,
+          responses={**ok(Payment, 201, replay=True),
+                     **errors({400: KEY_ERRORS, 404: "WALLET_NOT_FOUND", 409: "INSUFFICIENT_BALANCE",
+                               422: "IDEMPOTENCY_KEY_REUSED, LIMIT_EXCEEDED"})})
 def pay(body: PaymentBody, idempotency_key: str | None = Header(default=None),
         conn=Depends(get_conn)) -> JSONResponse:
     # Header(...) 會把參數名 idempotency_key 對應到 HTTP header「Idempotency-Key」
@@ -103,12 +129,16 @@ def pay(body: PaymentBody, idempotency_key: str | None = Header(default=None),
                         headers={"Idempotent-Replayed": "true" if replayed else "false"})
 
 
-@app.get("/payments/{payment_id}")
+@app.get("/payments/{payment_id}", response_model=None,
+         responses={**ok(PaymentDetail), **errors({404: "PAYMENT_NOT_FOUND"})})
 def get_payment(payment_id: str, conn=Depends(get_conn)) -> dict:
     return service.get_payment(conn, payment_id)
 
 
-@app.post("/payments/{payment_id}/refunds", status_code=201)
+@app.post("/payments/{payment_id}/refunds", status_code=201, response_model=None,
+          responses={**ok(Refund, 201, replay=True),
+                     **errors({400: KEY_ERRORS, 404: "PAYMENT_NOT_FOUND", 409: "REFUND_EXCEEDS_PAYMENT",
+                               422: "IDEMPOTENCY_KEY_REUSED"})})
 def refund(payment_id: str, body: AmountBody, idempotency_key: str | None = Header(default=None),
            conn=Depends(get_conn)) -> JSONResponse:
     status, response, replayed = service.refund(conn, idempotency_key, payment_id, body.model_dump())
@@ -116,17 +146,58 @@ def refund(payment_id: str, body: AmountBody, idempotency_key: str | None = Head
                         headers={"Idempotent-Replayed": "true" if replayed else "false"})
 
 
-@app.get("/wallets/{wallet_id}/transactions")
+@app.get("/wallets/{wallet_id}/transactions", response_model=None,
+         responses={**ok(Transactions), **errors({404: "WALLET_NOT_FOUND"})})
 def transactions(wallet_id: str, conn=Depends(get_conn)) -> dict:
     return service.transactions(conn, wallet_id)
 
 
-@app.post("/transfers", status_code=201)
+@app.post("/transfers", status_code=201, response_model=None,
+          responses={**ok(Transfer, 201, replay=True),
+                     **errors({400: KEY_ERRORS, 404: "WALLET_NOT_FOUND", 409: "INSUFFICIENT_BALANCE",
+                               422: "IDEMPOTENCY_KEY_REUSED, SAME_WALLET, LIMIT_EXCEEDED"})})
 def transfer(body: TransferBody, idempotency_key: str | None = Header(default=None),
              conn=Depends(get_conn)) -> JSONResponse:
     status, response, replayed = service.transfer(conn, idempotency_key, body.model_dump())
     return JSONResponse(status_code=status, content=response,
                         headers={"Idempotent-Replayed": "true" if replayed else "false"})
+
+
+# ---- API 文件 ------------------------------------------------------------------
+
+_generate_openapi = app.openapi
+FASTAPI_422 = {"$ref": "#/components/schemas/HTTPValidationError"}
+IDEMPOTENCY_KEY = {"name": "idempotency-key", "in": "header", "required": True,
+                   "description": "a new key for each new request; a retry resends the same key",
+                   "schema": {"type": "string", "minLength": 1, "maxLength": 64}}
+
+
+def _json_schema(response: dict) -> dict | None:
+    return response.get("content", {}).get("application/json", {}).get("schema")
+
+
+def openapi() -> dict:
+    """API 文件（/openapi.json，/docs 畫的就是它），改掉 FastAPI 自動產生、卻和實際不符的兩處：
+
+    - 每個有參數的路由都有「422 Validation Error」，格式是 {"detail": [...]}。這個 API 的驗證錯誤是 400
+      INVALID_REQUEST（handle_validation_error），從來不回這種 422。拿掉（CTR-004 檢查）。
+    - Idempotency-Key 寫成選填：參數有預設值 None，是為了讓「沒帶」回 IDEMPOTENCY_KEY_REQUIRED，
+      而不是 FastAPI 的通用驗證錯誤。文件上照實寫成必填。
+    """
+    doc = _generate_openapi()           # FastAPI 產生一次之後就快取起來
+    for operations in doc["paths"].values():
+        for op in operations.values():
+            if _json_schema(op["responses"].get("422", {})) == FASTAPI_422:
+                del op["responses"]["422"]
+            for i, param in enumerate(op.get("parameters", [])):
+                if param["name"] == "idempotency-key":
+                    op["parameters"][i] = IDEMPOTENCY_KEY
+    for name in ("HTTPValidationError", "ValidationError"):
+        doc.get("components", {}).get("schemas", {}).pop(name, None)
+    return doc
+
+
+app.openapi = openapi
 
 
 # ---- 手機版網頁 ----------------------------------------------------------------

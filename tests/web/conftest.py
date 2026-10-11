@@ -1,7 +1,8 @@
-"""網頁 UI 測試的 fixture：瀏覽器、兩種手機、失敗時留下截圖和 trace。
+"""網頁 UI 測試的 fixture：三種瀏覽器設定（Chromium、WebKit、Firefox）、失敗時留下截圖和 trace。
 
-    pip install -r requirements-web.txt && python -m playwright install chromium
-    (cd web && npm ci && npm run build)        # API 只在 web/dist 存在時才提供 /app
+    pip install -r requirements-web.txt && python -m playwright install chromium webkit firefox
+    sudo python -m playwright install-deps webkit     # Linux 上第一次：WebKit 需要的系統函式庫
+    (cd web && npm ci && npm run build)               # API 只在 web/dist 存在時才提供 /app
     pytest tests/web
 
 API 和資料庫沿用上一層 conftest 的 server、api、db：網頁測完一樣直接查資料庫。

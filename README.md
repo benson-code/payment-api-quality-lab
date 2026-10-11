@@ -18,15 +18,6 @@ a request or lose its response.
 The main flows are also provided as a **Postman collection** for manual use, run by **Newman** in CI.
 A **k6** load test, followed by a database reconciliation, can be triggered on demand.
 
-The same screens on both clients. The server took the payment but its answer was lost; the user
-retries, and the retry is recognised instead of charged again:
-
-<table>
-<tr><th></th><th>Home</th><th>No answer: retrying is safe</th><th>The retry: not charged again</th></tr>
-<tr><th>Web</th><td><img src="docs/screenshots/web-home.png" width="180" alt="web-home"></td><td><img src="docs/screenshots/web-no-answer.png" width="180" alt="web-no-answer"></td><td><img src="docs/screenshots/web-replayed.png" width="180" alt="web-replayed"></td></tr>
-<tr><th>Android</th><td><img src="docs/screenshots/app-home.png" width="180" alt="app-home"></td><td><img src="docs/screenshots/app-no-answer.png" width="180" alt="app-no-answer"></td><td><img src="docs/screenshots/app-replayed.png" width="180" alt="app-replayed"></td></tr>
-</table>
-
 **Six defects are planted in the API behind switches. On every push to main, CI turns each one on and
 requires the tests assigned to it to fail.** A test that has never been seen to fail is not
 evidence that it checks anything. Rules that exist only in the web page cannot be broken by a server
@@ -40,6 +31,15 @@ switch, so for those CI changes the page's code instead and requires the matchin
 | A negative payment credits the payer | VAL-P08, VAL-T08, WEB-005 | `negative_amount`: negative amounts are accepted |
 | Floating-point arithmetic loses a cent | PRC-005, WEB-004 | `float_math`: 19.99 × 100 = 1998.9999… |
 | A transfer debits the sender but never credits the receiver | TRF-006, DB-001 | `transfer_not_atomic`: debit and credit run in separate transactions |
+
+The same screens on both clients. The server took the payment but its answer was lost; the user
+retries, and the retry is recognised instead of charged again:
+
+<table>
+<tr><th></th><th>Home</th><th>No answer: retrying is safe</th><th>The retry: not charged again</th></tr>
+<tr><th>Web</th><td><img src="docs/screenshots/web-home.png" width="180" alt="web-home"></td><td><img src="docs/screenshots/web-no-answer.png" width="180" alt="web-no-answer"></td><td><img src="docs/screenshots/web-replayed.png" width="180" alt="web-replayed"></td></tr>
+<tr><th>Android</th><td><img src="docs/screenshots/app-home.png" width="180" alt="app-home"></td><td><img src="docs/screenshots/app-no-answer.png" width="180" alt="app-no-answer"></td><td><img src="docs/screenshots/app-replayed.png" width="180" alt="app-replayed"></td></tr>
+</table>
 
 ---
 
@@ -84,7 +84,7 @@ payment-api-quality-lab/
 │   └── amount_validation.csv  Amount-format cases (34, one per row)
 ├── tests/                     (3) Test case layer
 │   ├── conftest.py            API startup, fixtures, --env / --target_case_ids / --target_marks
-│   ├── test_*.py              99 API tests
+│   ├── test_*.py              100 API tests
 │   ├── web/                   60 web UI test runs (Playwright): three engines, failure evidence
 │   └── app/                   54 app UI test runs (Appium): device, displays, test proxy, failure evidence
 ├── SPEC.md                    Specification for both clients (web, Android): rules, screens, hooks, cases
@@ -149,9 +149,12 @@ Traditional Chinese; the web front end (`web/`) is written in English.
 
 Every error response has the form `{"error_code": "...", "message": "..."}`.
 
+The API document (OpenAPI) is served at `/docs` (Swagger UI) and `/openapi.json`. Each route declares
+its real responses and error codes; CTR-004 checks that the document and the API agree.
+
 ## 3. Test strategy
 
-There are 99 API tests (the web and app UI tests are described in section 4). Each group starts from the
+There are 100 API tests (the web and app UI tests are described in section 4). Each group starts from the
 question "if this breaks, what happens to the money?"
 
 | File | Tests | What it guards against |
@@ -164,7 +167,7 @@ question "if this breaks, what happens to the money?"
 | `test_concurrency.py` | 4 | 10 simultaneous payments never overdraw; 10 simultaneous retries with one key charge once; simultaneous refunds never exceed the payment; opposing transfers |
 | `test_refund.py` | 10 | Cumulative limit, a single refund above the payment, invalid amounts, unknown payments, refund details |
 | `test_transfer.py` | 5 | Debit and credit happen together or not at all; unknown receiver; transfer to oneself; limit |
-| `test_contract.py` | 3 | Every success and error response is validated against a JSON Schema that allows no extra fields |
+| `test_contract.py` | 4 | Every success and error response is validated against a JSON Schema that allows no extra fields. The API's own document (`/openapi.json`, shown at `/docs`) must list exactly the statuses the API answers with, each in the format it describes |
 | `test_db_invariants.py` | 8 | Seven SQL queries that must return no rows, plus a test proving each query can detect a violation |
 
 **Principles**
@@ -398,7 +401,7 @@ use, and Newman runs it from the command line and in CI.
 | | Postman / Newman | pytest |
 |---|---|---|
 | Purpose | Lets developers and product managers reproduce issues by importing it; exploratory testing; handover | Primary automated regression suite |
-| Coverage | Main flows and representative errors (25 requests), plus amount boundaries (9 CSV rows) | 99 API tests |
+| Coverage | Main flows and representative errors (25 requests), plus amount boundaries (9 CSV rows) | 100 API tests |
 | Cannot do | Query the database; generate concurrency (one request at a time) | — |
 
 **Collection structure**
@@ -588,3 +591,4 @@ Each of these is recorded in the commit history.
 | Long values broke the layout: a balance of `999,999,999,999.99` was clipped on the web; in the app, a 50-character name overlapped the *From* label and *TWD* stood in a column | Screenshots with the longest values the API allows. The web's layout check looked only for horizontal scrolling, and a card clips without making the page wider | Both clients step the balance's text style down by length and move the currency to the next line when needed; the app keeps a label at least as wide as its longest word, as a browser does. WEB-011 now checks for content clipped by a card, with the longest values |
 | The app's layout check passed with the two layout defects of the QA pass put back | Running each fix's removal against APP-011 (one change to the app at a time) | Android drops a text squeezed to zero width from the accessibility tree, so the crushed label was drawn but absent from every element list. Rows made of several texts now carry hooks, and the check requires every part of every row; both removals now fail APP-011 |
 | Reading a History longer than the screen stopped three rows early | APP-010 with twelve entries | `mobile: scrollGesture` reported "cannot scroll further" while it still could. The tests compare the screen before and after each scroll instead |
+| The API document at `/docs` described responses the API never gives: a `422 Validation Error` shaped `{"detail": [...]}` on every route, successes as any content, and Idempotency-Key as optional | Preparing a demo in Swagger UI: a validation error is really a 400 `INVALID_REQUEST`. The JSON Schema tests checked the responses, never the document | Each route declares its real responses (`app/responses.py`, documentation only: responses are sent as before); FastAPI's default 422 is removed and the key is marked required. CTR-004 requires the document to list exactly the statuses the API answers with, each in the documented format; it fails on the previous version |
