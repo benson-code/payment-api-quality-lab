@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Version | 2.4: the app's first Appium cases, APP-001 to APP-006 (see §11) |
+| Version | 2.5: every app case implemented, APP-001 to APP-017 (see §11) |
 | Date | 2026-10-11 |
-| Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules were checked on redroid (Android 14, 360 × 640 dp) with an Appium script, except layout (L-01, L-02), which waits for APP-011. A rule stays *planned* until it is checked in full |
+| Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules are checked on redroid (Android 14) by the Appium cases in `tests/app/`. A rule stays *planned* until it is checked in full |
 | Code | Web: `web/src/` (React 19 + Vite), served by the API under `/app`. App: `android/` (Kotlin, Jetpack Compose) |
-| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-014). App: Appium for Python, `tests/app/`: APP-001 to APP-006 implemented, APP-007 to APP-017 planned |
+| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-014). App: Appium for Python, `tests/app/` (APP-001 to APP-017) |
 
 ## 1. Purpose
 
@@ -175,8 +175,8 @@ instead of charging again. Web: `useAttempt.js`. App: the pay and payment-detail
 
 | ID | Rule | Web | App |
 |---|---|---|---|
-| L-01 | Nothing is cut off, overlapped or needs horizontal scrolling on the screen sizes of §5, on every screen, with the longest values the API allows (a 50-character name, a balance of `999,999,999,999.99`). The balance steps down a text style by its length as shown: up to 10 characters *Display/Balance*, up to 14 *Amount/Large*, longer *Title/Large*. A currency that does not fit moves to the next line; a label wraps between words but never shrinks below its longest word; an amount is never broken. | script | planned |
-| L-02 | Every interactive element meets the platform's minimum touch target (§5). | script | planned |
+| L-01 | Nothing is cut off, overlapped or needs horizontal scrolling on the screen sizes of §5, on every screen, with the longest values the API allows (a 50-character name, a balance of `999,999,999,999.99`). The balance steps down a text style by its length as shown: up to 10 characters *Display/Balance*, up to 14 *Amount/Large*, longer *Title/Large*. A currency that does not fit moves to the next line; a label wraps between words but never shrinks below its longest word; an amount is never broken. | script | script |
+| L-02 | Every interactive element meets the platform's minimum touch target (§5). | script | script |
 | L-03 | Every input has a visible label (a placeholder alone is not a label), and icon-only buttons have an accessible name. A field's error is shown under it and announced. | review | review |
 | L-04 | A message that appears after an action is in view without scrolling: it is shown next to the control that caused it, and it scrolls itself into view when it appears. | script | script |
 
@@ -205,9 +205,15 @@ the resource-id) in the app. Conventions:
 - `error-message`, `no-answer`, `replayed` and `refund-done` mark the four kinds of feedback, on
   every screen that can show them.
 - `back` is the top bar's back button on every screen that has one.
-- Each list row has an `item-title` (the entry type as the user reads it). The web's rows also carry
-  `data-type` and `data-entry-id`; the app's do not, because hiding machine-readable text in a row
-  would be read out by screen readers. App tests match rows to the ledger by position and title.
+- Each list row has an `item-title`: the entry type as the user reads it, *Top-up*, *Payment*,
+  *Refund*, *Transfer in* or *Transfer out* (ledger types `TOPUP`, `PAYMENT`, `REFUND`,
+  `TRANSFER_IN`, `TRANSFER_OUT`). The web's rows also carry `data-type` and `data-entry-id`; the
+  app's do not, because hiding machine-readable text in a row would be read out by screen readers.
+  App tests match rows to the ledger by position and title.
+- `receipt-row` wraps a label and its value (Confirm, receipts, Payment detail); `balance-row`
+  wraps the balance and its currency. The layout cases require every part of these rows, and of
+  every list row, to be visible: Android drops a text squeezed to zero width from the
+  accessibility tree, so the row is the only thing a test can see (§11, 2.5).
 
 ### 7.1 Start
 
@@ -318,11 +324,19 @@ App-only cases:
 | APP-016 | System back | (a) On Confirm, system Back returns to the amount step and keeps the pending attempt. (b) While processing, system Back does nothing. (c) On the payment receipt, system Back goes to Home, not to Confirm; one row in `payments`. | N-01 | |
 | APP-017 | Process death on the receipt | Pay `30` → receipt. Send the app to the background and kill its process. Reopen it → the same receipt (same payment ID and balance after), no **Confirm payment**; system Back goes to Home; one row in `payments`. Also after a replayed receipt (APP-015): reopened, it still says the payment had already gone through. | N-01, K-08 | the defect itself: before 2.3 the reopened app showed Confirm, and confirming again charged a second time (§11) |
 
-`tools/fault_check.py` requires these cases to fail under their defect, on every device profile:
+`tools/fault_check.py` requires these cases to fail under their defect, on every device profile and
+display configuration (the app cases with `--app`, since they need a device):
 `float_math` → WEB-004, APP-004; `negative_amount` → WEB-005 and APP-005 (`-1`); `no_idempotency` →
 WEB-008, APP-008, APP-015; `refund_overflow` → WEB-009, APP-009. `race` and `transfer_not_atomic` have
 no client case: one user cannot produce concurrent requests through one screen, and there is no
 transfer screen.
+
+**The two clients against each other.** The cases above prove that each client meets this
+specification; `tools/parity_check.py` proves that the two agree. It sends the same 41 amounts
+(payments, top-ups and refunds; valid, boundary and refused) through the page and through the app,
+each from a fresh wallet, and compares whether the button was enabled, what Confirm showed, the
+receipt or message, and the server's state afterwards. Displayed texts are compared with runs of
+spaces collapsed, as HTML displays them.
 
 ## 9. Traceability
 
@@ -360,9 +374,24 @@ that version, serves it to the tests and requires the case to fail.
 | `back_forgets_the_attempt` | Back from Confirm drops the pending attempt (what version 1.1 specified) | WEB-013 |
 | `top_up_offers_retry` | A Retry button appears after a top-up gets no answer | WEB-014 |
 
-**App mutations are not planned for the first version.** Each mutation needs its own build of the
-app (a few minutes each in CI). Until they exist, APP-007, 012, 013, 014 and 016 are not proven to
-fail, and this document says so.
+**App mutations are not automated.** Each one needs its own build of the app (a few minutes in CI).
+They were run by hand on redroid for version 2.5: one change to the app's code at a time, the app
+rebuilt, the case run, the code restored.
+
+| Change to the app | Case | Result |
+|---|---|---|
+| Confirm payment stays enabled while processing | APP-012 | fails |
+| Back from Confirm drops the pending attempt | APP-013 (a), APP-016 (a) | fail |
+| A Retry button after a top-up gets no answer | APP-014 | fails |
+| System Back on Confirm is not handled | APP-016 (a), (b) | fail |
+| The receipt is not saved (the 2.3 defect) | APP-017 | fails |
+| The pending attempt is not saved | APP-015 | fails |
+| The refund form is not brought into view | APP-011 | fails (Retry out of view) |
+| A receipt row's label is crushed by a long value (the 2.3 defect) | APP-011 | fails |
+| The balance keeps its largest style and the currency does not wrap (the 2.3 defect) | APP-011 | fails |
+| The in-flight guard is removed | APP-007 | **passes**: UiAutomator waits for each injected event to be handled, so the second tap arrives after the button has been redrawn disabled. The guard is proven by the unit test `AttemptTest.aSecondSubmitWhileInFlightSendsNothing`, which fails without it. WEB-007 reaches the gap on the web by tapping twice in one JavaScript task |
+| Icon buttons drawn at 40 dp | APP-011 | passes, correctly: Compose expands a clickable smaller than 48 dp to a 48 dp touch target and reports those bounds, so the touch target is unchanged |
+| The refund message shown before the reload | APP-011 | passes: the form's bring-into-view, the second of the two fixes from 2.2, keeps the message in view on its own |
 
 ## 10. Known limitations
 
@@ -386,6 +415,7 @@ fail, and this document says so.
 
 | Version | Change |
 |---|---|
+| 2.5 | **APP-007 to APP-017 implemented**: 17 cases in 27 tests (some cases have several parts or inputs), each run in both display configurations: 54 runs. `tools/fault_check.py --app` requires APP-004, 005, 008, 009 and 015 to fail under their defects; the client-only cases were seen to fail by hand (§9). Found while writing them: (1) Android drops a text squeezed to zero width from the accessibility tree, even with UiAutomator2's `allowInvisibleElements`, so the 2.3 layout defects (*From* crushed, *TWD* in a column) were invisible to any check based on element bounds; the rows now carry the hooks `receipt-row` and `balance-row`, and the layout cases require every part of a row to be visible (same rule on the web). (2) UiAutomator's own answer to "can this still scroll?" was wrong for Compose: it said no with three History rows below, so the tests compare the screen before and after each scroll. (3) Process death could only be tested when the app had been started with the launcher's intent; started by component name, Android opened a new task on return instead of restoring the old one. (4) The entry types' screen titles are now in §7. Also `tools/parity_check.py` (§8): its first run reported five differences that were its own mistake, reading the button's state before Compose had redrawn it after typing; the screen objects now wait for a field to show what was typed. |
 | 2.4 | **APP-001 to APP-006 implemented** in `tests/app/`, with screen objects in `framework/app/` named after the web's page objects and the test proxy described in §8. Each case runs in both display configurations: 18 runs, passing three times in a row on redroid. Seen to fail by hand: APP-004 with `float_math` (the receipt showed `19.98`), APP-005 with `negative_amount` (the payment of `-1` went through and the balance rose to `101.00`), and APP-005's ` 5 ` case with the app's old space trimming put back (Confirm showed `5.00`). `tools/fault_check.py` gains the app cases with APP-007 to APP-017. |
 | 2.3 | **The first full QA pass**: every automated check, the device checks, a probe that sends the same 40 inputs through both clients and compares what each shows and what the server did, and screenshots with the longest values the API allows. Fixed: (1) **a double charge in the app**: killed on the payment receipt, the app reopened on Confirm (the step and amount were saved, the receipt was not), and confirming again was a second payment with a new key; the receipt is now saved too (N-01, APP-017). (2) **The API accepted digits from other scripts**: Python's `\d` matched `１００`, which was charged as 100.00; the app showed it as `100.00` on Confirm because Android's `\d` matches them too, while its JVM unit tests could not see this. The API and both clients now write `[0-9]` (VAL-P16, P17, T16, T17; a unit test compiles the app's pattern in Unicode mode, as the device does). (3) **Confirm showed ` 5 ` as `5.00`** with a *Balance after*, and the API then refused it: both clients trimmed spaces, the API does not. *Plain* is now the API's grammar (R-04, WEB-005). (4) **Layout with long values**: on the web, a balance of `999,999,999,999.99` was clipped by its card (the page did not get wider, so the horizontal-scroll check missed it) and a long name squeezed the hide-balance button to 30 px; in the app, *From* was crushed to one letter per line and overlapped by a long name, and *TWD* was stacked into a column next to a 7-digit balance. Both clients now follow the rules in L-01; WEB-011 checks clipping inside cards and the longest values. Also: the app declares backup rules for Android 12 and later. |
 | 2.2 | **Every app screen implemented** (Pay with Confirm and receipt, Payment detail and refunds) and checked on redroid: 43 checks, three runs in a row, through a proxy that holds, loses or blocks requests. K-08 checked by killing the app's process while a payment's outcome was unknown: reopened, it showed Confirm with Retry, and Retry resent the saved key; charged once. Two L-04 defects found and fixed on the app: after a refund, the reloaded refund list pushed the success message below the visible area (the web keeps it in view through the browser's scroll anchoring; Compose has none), and after a refund got no answer, the Retry button sat below the visible area under its message. |

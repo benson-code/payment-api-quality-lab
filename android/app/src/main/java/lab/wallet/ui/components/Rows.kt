@@ -113,7 +113,9 @@ fun ReceiptRow(label: String, value: String, valueTestTag: String? = null, suffi
     val labelFloor = with(LocalDensity.current) {
         label.split(" ").maxOf { measurer.measure(it, WalletType.body).size.width }.toDp()
     }
-    BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = WalletSpacing.md)) {
+    // Hook "receipt-row": a test can check that the row shows both its label and its value. A label crushed
+    // to zero width disappears from the accessibility tree, so without the row there is nothing to measure.
+    BoxWithConstraints(Modifier.fillMaxWidth().testTag("receipt-row").padding(vertical = WalletSpacing.md)) {
         val valueMax = maxWidth - labelFloor - WalletSpacing.lg
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(WalletSpacing.lg)) {
             Text(label, style = WalletType.body, color = WalletColors.textSecondary, modifier = Modifier.weight(1f))

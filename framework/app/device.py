@@ -1,13 +1,18 @@
 """用 adb 操作裝置：Appium 管不到、或用 adb 比較直接的事。
 
-安裝 App、轉接 port（adb reverse）、切換螢幕設定、固定時區、帶參數重新啟動 App、讀崩潰紀錄。
+安裝 App、轉接 port（adb reverse）、切換螢幕設定、固定時區、帶參數重新啟動 App、
+像系統一樣殺掉背景程序、讀崩潰紀錄。
 """
 from __future__ import annotations
 
 import subprocess
+import time
 
 PACKAGE = "lab.wallet"
 ACTIVITY = f"{PACKAGE}/.MainActivity"
+# 桌面啟動器開 App 用的 intent：MAIN + LAUNCHER，旗標 NEW_TASK | RESET_TASK_IF_NEEDED
+LAUNCHER_INTENT = ("-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER",
+                   "-f", "0x10200000", "-n", ACTIVITY)
 
 
 class AdbError(RuntimeError):
@@ -54,10 +59,41 @@ class Device:
 
         -S 先 force-stop：程序和它保存的畫面狀態一起丟掉，上一個測試的狀態不會留下來。
         -W 等到第一個畫面畫出來才回來。apiBaseUrl 只有 debug 版會讀（ApiConfig.kt）。
+        用和桌面啟動器完全一樣的 intent（MAIN、LAUNCHER、同樣的旗標）：只用 -n 指定元件的話，之後
+        reopen_from_launcher() 認不出這個任務，會開一個新的，程序被殺掉後的恢復就測不到（量到的）。
         """
-        out = self.shell("am", "start", "-W", "-S", "-n", ACTIVITY, "--es", "apiBaseUrl", api_base_url)
+        out = self.shell("am", "start", "-W", "-S", *LAUNCHER_INTENT, "--es", "apiBaseUrl", api_base_url)
         if "Status: ok" not in out:
             raise AdbError(f"the app did not start: {out.strip()}")
+
+    def pid(self) -> str | None:
+        try:
+            return self.shell("pidof", PACKAGE).strip() or None
+        except AdbError:                               # pidof 找不到時回傳 1
+            return None
+
+    def send_to_background(self) -> None:
+        """按 Home 鍵：App 留在最近使用清單裡，變成背景程序。"""
+        self.shell("input", "keyevent", "KEYCODE_HOME")
+
+    def kill_background_process(self, timeout: float = 10) -> None:
+        """像系統記憶體不足時那樣殺掉 App 的程序（K-08、APP-015、APP-017）。
+
+        am kill 只殺背景程序，任務還留在最近使用清單，回到 App 時 Android 會用保存的狀態重建畫面。
+        App 剛離開畫面時還不算背景程序，am kill 會靜靜地什麼都不做，所以重試到程序消失為止。
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.shell("am", "kill", PACKAGE)
+            if self.pid() is None:
+                return
+            time.sleep(0.5)
+        raise AdbError(f"{PACKAGE} was still running {timeout:.0f} s after am kill")
+
+    def reopen_from_launcher(self) -> None:
+        """像點桌面圖示那樣回到 App：既有的任務回到前景，畫面用保存的狀態重建，原本的啟動參數
+        （apiBaseUrl）也還在。monkey 在 Appium 的 UiAutomation 連著時不能用，所以用 am start。"""
+        self.shell("am", "start", *LAUNCHER_INTENT)
 
     # ---- 網路 -----------------------------------------------------------------------------
 

@@ -77,7 +77,7 @@ payment-api-quality-lab/
 │   ├── conftest.py            API startup, fixtures, --env / --target_case_ids / --target_marks
 │   ├── test_*.py              99 API tests
 │   ├── web/                   40 web UI test runs (Playwright): browser, phones, failure evidence
-│   └── app/                   18 app UI test runs (Appium): device, displays, test proxy, failure evidence
+│   └── app/                   54 app UI test runs (Appium): device, displays, test proxy, failure evidence
 ├── SPEC.md                    Specification for both clients (web, Android): rules, screens, hooks, cases
 ├── android/                   Native Android app: Kotlin + Jetpack Compose
 ├── web/                       Mobile web front end: React + Vite, served by the API under /app
@@ -298,19 +298,45 @@ tests what WEB-001 tests).
 - Elements are found by the same hook names as on the web (Compose `testTag`, exposed as resource
   IDs). Expected texts come from the same `testdata/messages.py`.
 
-| Case | What it checks | Seen to fail with |
+| Case | What it checks | Proven to fail by |
 |---|---|---|
 | APP-001 | A new wallet starts at 0.00. The screen shows the wallet ID masked; the test takes the full ID from the answer the proxy recorded | |
 | APP-002 | A top-up reaches the balance and the ledger | |
 | APP-003 | Pay through Confirm to the receipt and History; one UUID v4 key, sent only on Confirm | |
 | APP-004 | A top-up of 19.99 keeps every cent | `float_math` |
-| APP-005 | `-1`, `1e3`, `10.555` and ` 5 ` are shown as typed on Confirm, without a balance after, and refused; nothing moves | `negative_amount` (`-1`); the app's old space trimming put back (` 5 `) |
+| APP-005 | `-1`, `1e3`, `10.555` and ` 5 ` are shown as typed on Confirm, without a balance after, and refused; nothing moves | `negative_amount` (`-1`) |
 | APP-006 | A payment above the balance is refused; *Change amount* keeps the input | |
+| APP-007 | A double tap on Confirm sends one payment | see below |
+| APP-008 | The server charges, the response is lost, the user retries: same key, "already gone through", one payment | `no_idempotency` |
+| APP-009 | A partial refund, then the cumulative refund limit (the payment is opened from History: the app has no URLs) | `refund_overflow` |
+| APP-010 | History equals the ledger, row by row, also when it is longer than the screen | |
+| APP-011 | Every screen in both displays, also with a 50-character name and the largest balance: nothing off screen, overlapping or squeezed, every part of every row visible, touch targets at least 48 dp; messages after an action in view | by hand |
+| APP-012 | While processing, Confirm reads *Processing…* and Confirm, Cancel and Back are disabled | by hand |
+| APP-013 | Back after no answer: the same amount keeps the key, a new amount gets a new one | by hand |
+| APP-014 | No Retry after a top-up gets no answer, and the top-up carried no key | by hand |
+| APP-015 | The app's process is killed while the outcome is unknown: reopened, it shows Confirm with "no answer", and Retry resends the saved key | `no_idempotency` |
+| APP-016 | System Back: on Confirm it keeps the pending attempt, while processing it does nothing, on the receipt it goes Home | by hand |
+| APP-017 | The process is killed on the receipt: reopened, the same receipt, never Confirm (the double charge found in the QA pass) | by hand |
 
-The failures in the last column were produced by hand, turning the defect on and running the case.
-`tools/fault_check.py` will require them with the next cases, APP-007 to APP-017 (double taps, lost
-responses, refunds, History against the ledger, layout, process death, system Back), together with a
-CI job on Google's emulator.
+**Proving the app tests can fail.** `tools/fault_check.py --app` requires the cases with a planted
+defect in the last column to fail under it, in both displays. The cases marked *by hand* test rules
+that live only in the app, which no server switch can break: each was seen to fail with one change
+to the app's code, built and run on redroid (SPEC.md §9 lists the changes). One did not:
+with the in-flight guard removed, APP-007 still passes, because UiAutomator waits for each injected
+event to be handled and the second tap arrives after the button has been redrawn disabled. The
+guard is proven by the app's unit test, which fails without it.
+
+**What the layout check can and cannot see.** Android drops a text squeezed to zero width from the
+accessibility tree, even with UiAutomator2's `allowInvisibleElements`. The two layout defects of the
+QA pass (*From* crushed by a long name, *TWD* stacked next to a long balance) were drawn on screen and
+absent from every element list, so no check of element bounds could find them. The rows now carry
+hooks (`receipt-row`, `balance-row`), and APP-011 requires every part of every row to be visible; the
+web applies the same rule.
+
+**Both clients side by side.** `tools/parity_check.py` sends the same 41 inputs (payment, top-up and
+refund amounts, valid and invalid) through the page and through the app, each from a fresh wallet,
+and compares what each showed (whether the button was enabled, Confirm's amount and balance after,
+the receipt or the message) and what the server did. Its first run found the API accepting `１００`.
 
 **Running**
 
@@ -318,7 +344,10 @@ CI job on Google's emulator.
 .venv/bin/pip install -r requirements-app.txt
 (cd android && ./gradlew assembleDebug)          # the debug build: only it accepts the proxy's address
 appium --address 127.0.0.1 --port 4723           # Appium 3 and the uiautomator2 driver, another terminal
-ANDROID_SERIAL=127.0.0.1:5555 .venv/bin/pytest tests/app --app   # 18 runs, about 2 minutes
+export ANDROID_SERIAL=127.0.0.1:5555                      # the device, when adb sees more than one
+.venv/bin/pytest tests/app --app                          # 54 runs, about 8 minutes
+.venv/bin/python tools/fault_check.py --app-only          # planted defects, app cases only
+.venv/bin/python tools/parity_check.py                    # web and app compared; needs the web build too
 ```
 
 The app tests need a device, so they are collected only with `--app`; without it, pytest's header
@@ -508,3 +537,5 @@ Each of these is recorded in the commit history.
 | The API accepted `１００` (full-width digits) and charged 100.00 | A probe that sends the same 40 inputs through both clients and compares the results: the web showed `１００` on Confirm, the app `100.00` | Python's `\d` matches any script's digits, and so does Android's (ICU), while the app's unit tests run on a JVM where it does not. The API and both clients use `[0-9]`; four CSV cases and a unit test that compiles the app's pattern in Unicode mode |
 | Confirm showed ` 5 ` as `5.00` with a balance after, and the API then refused it | The same probe | Both clients trimmed spaces before deciding whether an amount was plain; the API does not. They now use the API's grammar exactly (WEB-005) |
 | Long values broke the layout: a balance of `999,999,999,999.99` was clipped on the web; in the app, a 50-character name overlapped the *From* label and *TWD* stood in a column | Screenshots with the longest values the API allows. The web's layout check looked only for horizontal scrolling, and a card clips without making the page wider | Both clients step the balance's text style down by length and move the currency to the next line when needed; the app keeps a label at least as wide as its longest word, as a browser does. WEB-011 now checks for content clipped by a card, with the longest values |
+| The app's layout check passed with the two layout defects of the QA pass put back | Running each fix's removal against APP-011 (one change to the app at a time) | Android drops a text squeezed to zero width from the accessibility tree, so the crushed label was drawn but absent from every element list. Rows made of several texts now carry hooks, and the check requires every part of every row; both removals now fail APP-011 |
+| Reading a History longer than the screen stopped three rows early | APP-010 with twelve entries | `mobile: scrollGesture` reported "cannot scroll further" while it still could. The tests compare the screen before and after each scroll instead |

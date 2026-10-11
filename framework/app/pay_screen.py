@@ -49,6 +49,10 @@ class ConfirmScreen(AppScreen):
 
     def confirm_and_wait(self) -> ReceiptScreen:
         self.confirm()
+        return self.wait_for_receipt()
+
+    def wait_for_receipt(self) -> ReceiptScreen:
+        """等收據出現：確認、重試或放行被擋住的請求之後。"""
         return ReceiptScreen(self.driver).wait()
 
     def error(self) -> str:

@@ -29,6 +29,11 @@ class HomeScreen(AppScreen):
         self.tap("go-pay")
         return PayScreen(self.driver).wait()
 
+    def tab_history(self):
+        from framework.app.history_screen import HistoryScreen
+        self.tap("tab-history")
+        return HistoryScreen(self.driver).wait()
+
     def go_history(self):
         from framework.app.history_screen import HistoryScreen
         self.tap("go-history")

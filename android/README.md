@@ -3,7 +3,7 @@
 The native Android client of the wallet: Kotlin and Jetpack Compose, the same screens and behaviour
 as the web page (`../web/`), both defined by [`../SPEC.md`](../SPEC.md). Status: every screen
 implemented. Its Appium tests live with the rest of the suite, in [`../tests/app/`](../tests/app/)
-(APP-001 to APP-006 so far; how to run them: the main README, section 4).
+(APP-001 to APP-017; how to run them: the main README, section 4).
 
 ## Build
 
@@ -91,6 +91,23 @@ finds nothing.
 - **Check the screenshots, not only the bounds.** A label crushed to one letter per line and overlapped
   by its value passed a script that compared element bounds with the screen; it showed at once in a
   screenshot.
+- **A text squeezed to zero width is not in the tree at all.** Compose still draws it (one letter per
+  line, over its neighbour), but drops it from the accessibility tree; UiAutomator2's
+  `allowInvisibleElements` does not bring it back. A layout check can only notice that something is
+  missing, so rows made of several texts carry a hook (`receipt-row`, `balance-row`) and the check
+  requires every part of every row (`framework/app/layout.py`).
+- **Off-screen nodes are not in the tree either**, also with `allowInvisibleElements`: a list longer
+  than the screen is read while scrolling, joining the overlapping parts (`HistoryScreen.rows()`).
+- **Do not trust `mobile: scrollGesture`'s answer.** It reported "cannot scroll further" with three
+  History rows still below. `AppScreen.scroll()` compares the UI tree before and after instead.
+- **Start the app with the launcher's intent** (`-a MAIN -c LAUNCHER -f 0x10200000`). Started by
+  component name only, the task does not match the launcher's intent, and returning to the app after
+  its process was killed opens a new task instead of restoring the old one.
+- **Compose enlarges small touch targets.** A clickable drawn at 40 dp gets a 48 dp touch target, and
+  the accessibility bounds report the 48 dp: a touch-target check measures what a finger can hit.
+- **A double tap from Appium cannot land inside one frame.** UiAutomator waits for each injected event
+  to be handled, so the second tap of a W3C double tap arrives after the button has been redrawn
+  disabled. What only a sub-frame tap would reach (the in-flight guard) is unit-tested instead.
 
 ### Compose differences that matter for parity with the web
 

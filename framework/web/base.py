@@ -37,6 +37,8 @@ class WebPage:
         small_targets      小於 44 x 44 CSS px 的按鈕或連結（觸控目標太小，手指點不準）
         clipped            超出所在卡片的文字或元素：卡片會把它裁掉，頁面卻不會變寬，
                            所以 horizontal_scroll 看不出來（最大金額的餘額就是這樣被裁掉的）
+        incomplete_rows    一列裡有一部分被擠到沒有寬度：標籤和值、金額和幣別、交易紀錄的類型、金額、
+                           餘額。和 App 的檢查是同一條規則（framework/app/layout.py）；App 曾經這樣壞過
         """
         return self.page.evaluate("""() => ({
             horizontal_scroll: document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -46,6 +48,15 @@ class WebPage:
                     return r.width > 0 && (r.left < card.left - 0.5 || r.right > card.right + 0.5);
                 })
                 .map(e => `${e.dataset.testid || e.tagName.toLowerCase()} "${e.textContent.trim().slice(0, 24)}"`),
+            incomplete_rows: [
+                ...[...document.querySelectorAll('[data-testid="receipt-row"], [data-testid="balance-row"]')]
+                    .filter(row => [...row.children].some(c => c.getBoundingClientRect().width < 1)),
+                ...[...document.querySelectorAll('[data-testid="history-item"], [data-testid="recent-item"]')]
+                    .filter(row => ['item-title', 'item-amount', 'item-balance'].some(tag => {
+                        const part = row.querySelector(`[data-testid="${tag}"]`);
+                        return !part || part.getBoundingClientRect().width < 1;
+                    })),
+            ].map(row => `${row.dataset.testid} "${row.textContent.trim().slice(0, 40)}"`),
             small_targets: [...document.querySelectorAll('a, button')]
                 .map(e => ({ el: e.dataset.testid || e.textContent.trim(), r: e.getBoundingClientRect() }))
                 .filter(x => x.r.width < 44 || x.r.height < 44)

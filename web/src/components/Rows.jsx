@@ -10,7 +10,7 @@ export function SectionHeader({ children }) {
 // A test hook on an amount wraps the number only, never the currency: "63.00", not "63.00 TWD".
 export function ReceiptRow({ label, testId, children }) {
   return (
-    <div className="receipt-row">
+    <div className="receipt-row" data-testid="receipt-row">
       <dt className="t-body">{label}</dt>
       <dd className="t-body-strong" data-testid={testId}>{children}</dd>
     </div>

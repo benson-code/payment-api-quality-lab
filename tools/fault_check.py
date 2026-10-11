@@ -4,6 +4,8 @@
     .venv/bin/python tools/fault_check.py race         # 只跑一個
     .venv/bin/python tools/fault_check.py --api-only   # 只看 API 測試（CI 的 fault-check 工作）
     .venv/bin/python tools/fault_check.py --web-only   # 只看網頁測試（CI 的 web 工作）
+    .venv/bin/python tools/fault_check.py --app        # 再加上 Android App 的案例（要裝置）
+    .venv/bin/python tools/fault_check.py --app-only   # 只看 App 的案例
 
 只看「整套有沒有紅」不夠：可能是別的測試剛好壞掉。所以每個開關都列出
 「應該被哪些測試抓到」，少一個就算失敗。
@@ -12,6 +14,11 @@
 Playwright、前端沒建置）整個略過 tests/web 並印出原因：不然「Build it first」的失敗會被當成抓到
 bug。--web-only 則一定要跑得起來，跑不起來直接失敗。
 只存在於網頁裡的規則（WEB-007、012、013、014）伺服器開關弄不壞，由 web_mutation_check.py 證明。
+
+App 案例（tests/app）兩種螢幕設定各算一個。App 測試要裝置，所以和 pytest 一樣要加 --app 才檢查；
+加了卻跑不起來（沒裝 Appium 客戶端、沒建 APK、沒有裝置或 Appium 伺服器）直接失敗。每個開關只跑
+指定給它的 App 案例（--target_case_ids）：整套 App 測試要幾分鐘，六個開關各跑一次太久，而這裡要
+確認的只是「指定的案例有沒有失敗」。
 """
 from __future__ import annotations
 
@@ -19,6 +26,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -45,6 +53,18 @@ WEB_EXPECTED = {           # SPEC.md §8；{phone} 會換成每一種手機
 }
 
 
+DISPLAYS = ("360x640", "411x914")
+APP_EXPECTED = {           # SPEC.md §8：（案例編號, 測試名稱）；{display} 會換成每一種螢幕設定
+    "no_idempotency": [("APP-008", "test_lost_response_then_retry_charges_once[{display}]"),
+                       ("APP-015", "test_process_death_with_the_outcome_unknown[{display}]")],
+    "refund_overflow": [("APP-009", "test_partial_refund_then_the_cumulative_limit[{display}]")],
+    "negative_amount": [("APP-005", "test_invalid_amount_is_refused_and_nothing_moves[{display}-negative]")],
+    "float_math": [("APP-004", "test_top_up_19_99_keeps_every_cent[{display}]")],
+}
+APK = ROOT / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+APPIUM_URL = "http://127.0.0.1:4723"
+
+
 def web_unavailable() -> str | None:
     """網頁測試跑不起來的原因；跑得起來回傳 None。"""
     try:
@@ -56,20 +76,51 @@ def web_unavailable() -> str | None:
     return None
 
 
-def expected_for(bug: str, api: bool, web: bool) -> list[str]:
+def app_unavailable() -> str | None:
+    """App 測試跑不起來的原因；跑得起來回傳 None。"""
+    try:
+        import appium  # noqa: F401
+    except ImportError as e:
+        return f"the Appium client cannot be imported ({e}); pip install -r requirements-app.txt"
+    if not APK.is_file():
+        return "the debug app is not built (cd android && ./gradlew assembleDebug)"
+    devices = [line.split()[0] for line in subprocess.run(["adb", "devices"], capture_output=True, text=True)
+               .stdout.splitlines()[1:] if line.endswith("\tdevice")]
+    if not os.environ.get("ANDROID_SERIAL") and len(devices) != 1:
+        return f"adb sees {devices or 'no device'}; choose one with ANDROID_SERIAL"
+    try:
+        urllib.request.urlopen(APPIUM_URL + "/status", timeout=5)
+    except OSError as e:
+        return f"no Appium server at {APPIUM_URL} ({e})"
+    return None
+
+
+def expected_for(bug: str, api: bool, web: bool, app: bool) -> list[str]:
     names = list(EXPECTED[bug]) if api else []
     if web:
         names += [t.format(phone=p) for t in WEB_EXPECTED.get(bug, []) for p in PHONES]
+    if app:
+        names += [t.format(display=d) for _, t in APP_EXPECTED.get(bug, []) for d in DISPLAYS]
     return names
 
 
-def failed_tests(bug: str, api: bool, web: bool) -> set[str]:
-    if api and web:
-        scope = []
-    elif web:
-        scope = ["tests/web"]
-    else:
-        scope = ["--ignore=tests/web"]
+def failed_tests(bug: str, api: bool, web: bool, app: bool) -> set[str]:
+    failed = set()
+    if api or web:
+        if api and web:
+            scope = []
+        elif web:
+            scope = ["tests/web"]
+        else:
+            scope = ["--ignore=tests/web"]
+        failed |= run_pytest(bug, scope)
+    if app and APP_EXPECTED.get(bug):
+        ids = ",".join(case for case, _ in APP_EXPECTED[bug])
+        failed |= run_pytest(bug, ["tests/app", "--app", f"--target_case_ids={ids}"])
+    return failed
+
+
+def run_pytest(bug: str, scope: list[str]) -> set[str]:
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "junit.xml"
         run = subprocess.run([sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider",
@@ -88,17 +139,20 @@ def failed_tests(bug: str, api: bool, web: bool) -> set[str]:
 
 
 def main(args: list[str]) -> int:
-    api_only, web_only = "--api-only" in args, "--web-only" in args
+    api_only, web_only, app_only = "--api-only" in args, "--web-only" in args, "--app-only" in args
+    with_app = "--app" in args
     bugs = [a for a in args if not a.startswith("--")]
-    unknown = [a for a in bugs if a not in EXPECTED]
-    if (api_only and web_only) or unknown:
-        print(f"usage: fault_check.py [--api-only | --web-only] [bug ...]; bugs: {', '.join(EXPECTED)}")
+    unknown = [a for a in bugs if a not in EXPECTED] + \
+        [a for a in args if a.startswith("--") and a not in ("--api-only", "--web-only", "--app-only", "--app")]
+    if api_only + web_only + app_only > 1 or (with_app and (api_only or web_only or app_only)) or unknown:
+        print("usage: fault_check.py [--api-only | --web-only | --app-only | --app] [bug ...]; "
+              f"bugs: {', '.join(EXPECTED)}")
         return 2
 
-    api = not web_only
-    if api_only:
+    api = not (web_only or app_only)
+    if api_only or app_only:
         web = False
-        print("web cases: not part of this run (--api-only)")
+        print(f"web cases: not part of this run ({'--api-only' if api_only else '--app-only'})")
     else:
         reason = web_unavailable()
         web = reason is None
@@ -106,18 +160,28 @@ def main(args: list[str]) -> int:
             print(f"--web-only, but the web tests cannot run: {reason}")
             return 2
         print("web cases: checked" if web else f"web cases: NOT checked: {reason}")
-    selected = bugs or list(EXPECTED)
-    if web_only:
-        # 網頁沒有對應案例的開關（race、transfer_not_atomic）不用跑
-        selected = [b for b in selected if WEB_EXPECTED.get(b)]
-        if not selected:
-            print(f"no web case is assigned to {', '.join(bugs)}")
+    app = with_app or app_only
+    if app:
+        reason = app_unavailable()
+        if reason:
+            print(f"{'--app-only' if app_only else '--app'}, but the app tests cannot run: {reason}")
             return 2
+        print("app cases: checked")
+    else:
+        print("app cases: not part of this run (add --app; they need a device)")
+    selected = bugs or list(EXPECTED)
+    for only, table, what in ((web_only, WEB_EXPECTED, "web"), (app_only, APP_EXPECTED, "app")):
+        if only:
+            # 沒有對應案例的開關（race、transfer_not_atomic）不用跑
+            selected = [b for b in selected if table.get(b)]
+            if not selected:
+                print(f"no {what} case is assigned to {', '.join(bugs)}")
+                return 2
 
     missed = 0
     for bug in selected:
-        failed = failed_tests(bug, api, web)
-        not_caught = [t for t in expected_for(bug, api, web) if t not in failed]
+        failed = failed_tests(bug, api, web, app)
+        not_caught = [t for t in expected_for(bug, api, web, app) if t not in failed]
         status = "CAUGHT" if not not_caught else "MISSED"
         missed += bool(not_caught)
         print(f"{bug:<20} {status}  ({len(failed)} tests failed)")

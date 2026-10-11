@@ -56,7 +56,7 @@ fun BalanceCard(wallet: Wallet) {
         }
         // The currency moves to the next line rather than being squeezed into a column (SPEC L-01)
         val shown = if (hidden) "••••••" else Money.display(wallet.balance)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(WalletSpacing.sm)) {
+        FlowRow(Modifier.testTag("balance-row"), horizontalArrangement = Arrangement.spacedBy(WalletSpacing.sm)) {
             Text(shown, style = balanceStyle(shown), color = WalletColors.textPrimary,
                 modifier = Modifier.alignByBaseline().testTag("balance"))
             Text(wallet.currency, style = WalletType.bodyStrong, color = WalletColors.textSecondary, softWrap = false,

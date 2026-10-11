@@ -12,3 +12,12 @@ ERROR_TEXT = {
     "PAYMENT_NOT_FOUND": "No payment with this ID.",                                               # E-06
     "INVALID_OWNER": "Enter a name of 1 to 50 characters.",                                        # E-07
 }
+
+# 交易紀錄每一列的 item-title：ledger.type 在畫面上的寫法（SPEC.md §7）
+ENTRY_TITLE = {
+    "TOPUP": "Top-up",
+    "PAYMENT": "Payment",
+    "REFUND": "Refund",
+    "TRANSFER_IN": "Transfer in",
+    "TRANSFER_OUT": "Transfer out",
+}

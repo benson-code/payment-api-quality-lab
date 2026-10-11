@@ -18,7 +18,7 @@ export default function BalanceCard({ wallet }) {
           <Icon name={hidden ? 'eye-off' : 'eye'} />
         </button>
       </div>
-      <p className="balance-row">
+      <p className="balance-row" data-testid="balance-row">
         <span className={balanceStyle(shown)} data-testid="balance">{shown}</span>
         <span className="t-body-strong c-secondary">{wallet.currency}</span>
       </p>
