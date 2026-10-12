@@ -3,9 +3,9 @@
     PATH=~/.local/node20/bin:$PATH .venv/bin/python tools/web_mutation_check.py      # 全部
     PATH=~/.local/node20/bin:$PATH .venv/bin/python tools/web_mutation_check.py no_in_flight_guard
 
-fault_check.py 用伺服器的埋 bug 開關證明測試抓得到錯，但 WEB-007、012、013、014 守的規則寫在
-網頁裡：連點的「送出中」旗標、處理中的按鈕、付款嘗試的 key、儲值不提供重試。伺服器怎麼改都
-弄不壞它們。所以這裡改的是網頁原始碼：每個「突變」把一小段程式換掉，另外編譯一份前端，讓 API
+fault_check.py 用伺服器的埋 bug 開關證明測試抓得到錯，但 WEB-007、012 到 016 守的規則寫在
+網頁裡：連點的「送出中」旗標、處理中的按鈕、付款嘗試的 key、儲值不提供重試、無障礙名稱和標籤、
+固定列的 scroll padding。伺服器怎麼改都弄不壞它們。所以這裡改的是網頁原始碼：每個「突變」把一小段程式換掉，另外編譯一份前端，讓 API
 改掛這份（WEB_DIST 環境變數），再跑指定的案例。案例沒有失敗 = 這段程式壞了也沒人發現。
 
 需要 Node（編譯前端）、requirements-web.txt，以及 web/node_modules（cd web && npm ci）。
@@ -53,6 +53,28 @@ MUTANTS = {
         " onClick={() => attempt.submit(amount)}>Retry</button>}\n        {state.kind === 'unknown' && (",
         ["WEB-014"],
         "offer Retry after a top-up gets no answer",
+    ),
+    "balance_toggle_unnamed": (
+        "src/components/BalanceCard.jsx",
+        "                aria-label={hidden ? 'Show balance' : 'Hide balance'} aria-pressed={hidden}",
+        "                aria-pressed={hidden}",
+        ["WEB-015"],
+        "the hide-balance button, an icon only, loses its accessible name",
+    ),
+    "no_scroll_padding": (
+        "src/styles.css",
+        "html { scroll-padding-top: 56px; }\nhtml:has(.tab-bar) { scroll-padding-bottom: calc(64px + env(safe-area-inset-bottom)); }",
+        "",
+        ["WEB-016"],
+        "no scroll padding for the sticky bars (the page before WEB-016 was written)",
+    ),
+    # axe 本身抓不到（它把 placeholder 算成名稱）：由 WEB-015 自己的 visible-label 檢查抓
+    "amount_label_detached": (
+        "src/components/Fields.jsx",
+        '      <label className="field-label t-label" htmlFor={id}>{label}</label>\n      <div className="field-box amount-box">',
+        '      <span className="field-label t-label">{label}</span>\n      <div className="field-box amount-box">',
+        ["WEB-015"],
+        "the amount field's label is no longer tied to it; only the placeholder 0.00 is left",
     ),
 }
 

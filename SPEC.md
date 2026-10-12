@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Version | 2.8: the app cases run in CI, on Google's Android Emulator (see §11) |
+| Version | 2.9: automated accessibility checks on the web, and a fix for focus hidden behind the tab bar (see §11) |
 | Date | 2026-10-13 |
 | Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules are checked on redroid (Android 14) and on Google's Android Emulator (Android 16) by the Appium cases in `tests/app/`. A rule stays *planned* until it is checked in full |
 | Code | Web: `web/src/` (React 19 + Vite), served by the API under `/app`. App: `android/` (Kotlin, Jetpack Compose) |
-| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-014). App: Appium for Python, `tests/app/` (APP-001 to APP-017) |
+| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-016). App: Appium for Python, `tests/app/` (APP-001 to APP-017) |
 
 ## 1. Purpose
 
@@ -177,8 +177,10 @@ instead of charging again. Web: `useAttempt.js`. App: the pay and payment-detail
 |---|---|---|---|
 | L-01 | Nothing is cut off, overlapped or needs horizontal scrolling on the screen sizes of §5, on every screen, with the longest values the API allows (a 50-character name, a balance of `999,999,999,999.99`). The balance steps down a text style by its length as shown: up to 10 characters *Display/Balance*, up to 14 *Amount/Large*, longer *Title/Large*. A currency that does not fit moves to the next line; a label wraps between words but never shrinks below its longest word; an amount is never broken. | script | script |
 | L-02 | Every interactive element meets the platform's minimum touch target (§5). | script | script |
-| L-03 | Every input has a visible label (a placeholder alone is not a label), and icon-only buttons have an accessible name. A field's error is shown under it and announced. | review | review |
+| L-03 | Every input has a visible label (a placeholder alone is not a label), and icon-only buttons have an accessible name. A field's error is shown under it and announced. | script; *announced*: review | review |
 | L-04 | A message that appears after an action is in view without scrolling: it is shown next to the control that caused it, and it scrolls itself into view when it appears. | script | script |
+| L-05 | Every screen, in each of its message states, passes the WCAG 2.2 level A and AA rules that axe-core checks automatically: accessible names, colour contrast, ARIA, the page's language and more. Except `target-size` (24 × 24 px), which L-02 covers with a larger minimum. | script | planned |
+| L-06 | Moving through a screen with the keyboard (Tab and Shift+Tab; Option+Tab in Safari), the focused element is never entirely hidden behind the sticky top bar or tab bar (WCAG 2.2, 2.4.11). | script | planned |
 
 ### 6.6 Error messages
 
@@ -318,6 +320,14 @@ Each pair of cases tests the same behaviour on both clients:
 | Back after no answer: (a) the same amount (as `30.00`) keeps the key, Retry → `replayed`, one row; (b) a new amount gets a new key | WEB-013 | APP-013 | K-05 | web: mutation `back_forgets_the_attempt`; app: §9 |
 | Top-up with no answer: the user is asked to check the balance; no Retry; balance unchanged | WEB-014 | APP-014 | K-07 | web: mutation `top_up_offers_retry`; app: §9 |
 
+Web-only cases (the app has none yet for L-05 and L-06; Google's Accessibility Test Framework would be
+the tool there):
+
+| ID | Case | Steps and expected result | Rules | Proven to fail by |
+|---|---|---|---|---|
+| WEB-015 | Accessibility scan | 17 states: every screen, and the states that show a message or change the page (Start with an error, Home with the balance hidden and with no activity, empty History, Top up refused, Confirm with *no answer*, the `replayed` receipt, Payment detail after a refund and after a refused one). axe-core 4.13 finds no violation of the WCAG 2.2 A and AA rules, and every input is tied to a visible `<label>`: axe accepts a placeholder as a field's name, so that part of L-03 is checked separately. | L-03, L-05 | mutations `balance_toggle_unnamed`, `amount_label_detached` |
+| WEB-016 | Focus not hidden | On a 360 × 640 viewport, with History and the refund list longer than the screen: on every screen, Tab from the first element to the last, then Shift+Tab back. No focused element is entirely behind the top bar or the tab bar. | L-06 | mutation `no_scroll_padding` |
+
 App-only cases:
 
 | ID | Case | Steps and expected result | Rules | Proven to fail by |
@@ -353,18 +363,21 @@ spaces collapsed, as HTML displays them.
 | K-03 | WEB-008 | APP-008 | | D-06 | — | — |
 | K-04 | WEB-005, 006, 009 | APP-005, 006, 009 | | L-01 | WEB-011 | APP-011 |
 | K-05 | WEB-013 | APP-013 | | L-02 | WEB-011 | APP-011 |
-| K-06 | WEB-008 | APP-008 | | L-03 | — | — |
+| K-06 | WEB-008 | APP-008 | | L-03 | WEB-015 | — |
 | | | | | L-04 | WEB-011 | APP-011 |
+| | | | | L-05 | WEB-015 | — |
+| | | | | L-06 | WEB-016 | — |
 | K-07 | WEB-014 | APP-014 | | E-01, 02, 04 | WEB-005, 006, 009 | APP-005, 006, 009 |
 | K-08 | n/a | APP-015 | | E-03, 05 to 09 | — | — |
 
 **Not covered by a case yet, on either client:** D-03 (time zone and grouping), D-04 (masking), D-06
-(hiding the balance), L-03 and the remaining error messages. On the web they were checked once by
+(hiding the balance) and the remaining error messages; on the app also L-03, L-05 and L-06. On the web they were checked once by
 script (§6), but nothing checks them on every change. None of them can move money.
 
-**Rules that live only in the client.** WEB-007, 012, 013, 014 and APP-007, 012, 013, 014, 016, 017 test
+**Rules that live only in the client.** WEB-007, 012 to 016 and APP-007, 012, 013, 014, 016, 017 test
 rules that live in the client (the in-flight guard, the disabled button, the pending attempt, the
-missing Retry, system Back, the saved receipt), so no server switch can break them. APP-017 was
+missing Retry, accessible names and labels, the scroll padding, system Back, the saved receipt), so
+no server switch can break them. APP-017 was
 seen to fail before its fix (§11, 2.3). On the web,
 `tools/web_mutation_check.py` proves they can fail: it changes one piece of the page's code, builds
 that version, serves it to the tests and requires the case to fail.
@@ -375,6 +388,9 @@ that version, serves it to the tests and requires the case to fail.
 | `confirm_stays_enabled` | Confirm payment stays enabled while processing | WEB-012 |
 | `back_forgets_the_attempt` | Back from Confirm drops the pending attempt (what version 1.1 specified) | WEB-013 |
 | `top_up_offers_retry` | A Retry button appears after a top-up gets no answer | WEB-014 |
+| `balance_toggle_unnamed` | The hide-balance button, an icon only, loses its accessible name | WEB-015 |
+| `amount_label_detached` | The amount field's label is no longer tied to it; only the placeholder `0.00` is left. axe-core alone passes this | WEB-015 |
+| `no_scroll_padding` | No scroll padding for the sticky bars (the page before version 2.9) | WEB-016 |
 
 **App mutations are not automated.** Each one needs its own build of the app (a few minutes in CI).
 They were run by hand on redroid for version 2.5: one change to the app's code at a time, the app
@@ -403,6 +419,12 @@ rebuilt, the case run, the code restored.
 - **Safari's engine, not Safari.** The iPhone profile runs in Playwright's Linux build of WebKit,
   the engine Safari uses, not in Safari on an iPhone; and there is no iOS app: iOS cannot be built or
   run on this project's Linux machines.
+- **Accessibility is checked by computation, not by listening.** WEB-015 and WEB-016 catch what can
+  be computed from the page: names, labels, contrast, ARIA, focus behind a bar. Whether VoiceOver or
+  TalkBack reads a screen in a sensible order and wording has not been checked. Firefox does not
+  scroll to a focused element that is still partly visible, so it can be half behind a bar: WCAG
+  2.4.11 (AA) allows this, 2.4.12 (AAA) would not. In Playwright's WebKit, keyboard focus on a text
+  field does not scroll the page at all, so WEB-016 counts only elements hidden behind a bar.
 - **The app is tested on redroid and Google's emulator** (in CI too), not on physical phones: no real camera,
   sensors, vendor skins or Google Play services. None of the app's features need them.
 - **One currency (TWD)** and English text only.
@@ -418,6 +440,7 @@ rebuilt, the case run, the code restored.
 
 | Version | Change |
 |---|---|
+| 2.9 | **Accessibility checked on every change (web).** WEB-015 runs axe-core 4.13 (WCAG 2.2 A and AA) on 17 states of the page, and WEB-016 tabs through every screen; L-03 moves from *review* to *script*, and L-05 and L-06 are new. Found: (1) **focus hidden behind the sticky bars**: on a 360 × 640 screen, Tab to *Use another wallet* on Home left it entirely behind the tab bar and Shift+Tab left the balance toggle behind the top bar (Chromium and WebKit); in Firefox, Tab left a History row behind the tab bar. The page now sets scroll padding for both bars. It came up while checking an axe `target-size` report, which itself depended on the scroll position at the time of the scan and is left to L-02. (2) **axe accepts a placeholder as a field's name**: with the amount field's label detached, axe still passed, so WEB-015 also requires a visible `<label>` for every input. Three mutations prove the new checks can fail, in all three engines. The scan found nothing else: names, contrast and ARIA already passed. |
 | 2.8 | **The app cases run in CI.** A sixth CI job installs the APK built by the Android job on Google's Android Emulator (Pixel 7 profile, Android 16, x86-64 image, KVM on GitHub's x64 runner), with Appium 3.8.0 and UiAutomator2 8.7.0. The first run: the 54 runs pass in about 9 minutes, and `tools/fault_check.py --app-only` catches all four defects that have app cases. No code change was needed. |
 | 2.7 | **The app cases on Google's Android Emulator.** On a Mac with Apple silicon (Pixel 7 profile, Android 16, the app's target API 36) the 54 runs pass without any change to the code, and `tools/fault_check.py --app-only` catches all four defects that have app cases. Until now the app had run on redroid (Android 14) only. Documentation only; README section 4 lists both devices |
 | 2.6 | **Three browser engines on the web.** Every web case runs as Pixel 7 in Chromium, iPhone 14 in WebKit (Safari's engine; until now the iPhone profile ran in Chromium) and Desktop Firefox: 60 runs, passing three times in a row. `tools/fault_check.py` requires WEB-004, 005, 008 and 009 to fail in all three, and `tools/web_mutation_check.py` now counts a mutation as caught only when its case fails in every engine; all four defects and all four mutations are caught in all three. No case needed a change for WebKit or Firefox. |
