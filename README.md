@@ -382,7 +382,7 @@ found the API accepting `１００`.
 (cd android && ./gradlew assembleDebug)          # the debug build: only it accepts the proxy's address
 appium --address 127.0.0.1 --port 4723           # Appium 3 and the uiautomator2 driver, another terminal
 export ANDROID_SERIAL=127.0.0.1:5555                      # the device, when adb sees more than one
-.venv/bin/pytest tests/app --app                          # 54 runs, about 8 minutes
+.venv/bin/pytest tests/app --app                          # 54 runs, 5 to 8 minutes (devices below)
 .venv/bin/python tools/fault_check.py --app-only          # planted defects, app cases only
 .venv/bin/python tools/parity_check.py                    # web and app compared; needs the web build too
 ```
@@ -390,6 +390,35 @@ export ANDROID_SERIAL=127.0.0.1:5555                      # the device, when adb
 The app tests need a device, so they are collected only with `--app`; without it, pytest's header
 says so. With `--app` but no device, no Appium server or no APK, every app test fails and says what
 is missing.
+
+**Devices.** The suite has been run on two kinds of device, with the same code and the same results:
+
+| Device | Android | Host | `ANDROID_SERIAL` | 54 runs |
+|---|---|---|---|---|
+| redroid: Android in a Docker container | 14 | The ARM64 Linux development machine (section 7) | `127.0.0.1:5555` | about 8 minutes |
+| Google's Android Emulator: Pixel 7 profile, arm64 image | 16 (API 36, the app's target) | A Mac with Apple silicon | `emulator-5554` | about 5 minutes |
+
+redroid shares the host's Linux kernel and needs its binder driver, so it runs on Linux only. The
+emulator is a virtual machine with its own kernel (on a Mac, through Apple's Hypervisor framework),
+so it runs on macOS without Docker. On the emulator, `tools/fault_check.py --app-only` also catches
+all four planted defects that have app cases.
+
+Setting up the emulator on a Mac with the SDK's command-line tools; Android Studio is not needed:
+
+```bash
+export ANDROID_HOME=~/Library/Android/sdk   # command-line tools unpacked in $ANDROID_HOME/cmdline-tools/latest
+yes | sdkmanager --licenses
+sdkmanager "platform-tools" "emulator" "platforms;android-36" "system-images;android-36;google_apis;arm64-v8a"
+avdmanager create avd -n pixel7-api36 -k "system-images;android-36;google_apis;arm64-v8a" -d pixel_7
+emulator -avd pixel7-api36 -no-window -no-audio > emulator.log 2>&1 &   # output to a file: see below
+export ANDROID_SERIAL=emulator-5554
+(cd android && JAVA_HOME=/path/to/jdk-21 ./gradlew assembleDebug)       # Gradle 8.14 does not run on JDK 25
+```
+
+Send the emulator's output to a file. In the first runs on the Mac it was piped into a command that
+had already exited, and adb lost the device now and then (`device offline`) while Appium was starting
+a session. Started with its output going to a file, the emulator did not drop again: six sessions in
+a row, the 54 runs and the defect check.
 
 ## 5. Postman and Newman
 
@@ -474,7 +503,10 @@ and measured results are in [`load/README.md`](load/README.md).
 
 ## 7. Running locally
 
-The development environment is Ubuntu on an Oracle Cloud ARM64 instance (Ampere A1), without Docker.
+The development environment is Ubuntu on an Oracle Cloud ARM64 instance (Ampere A1). The API, the
+tests and CI need no Docker; the one exception is the device for the Android app tests on that
+machine, redroid, which runs Android in a Docker container (section 4). On a Mac, the app tests run on
+Google's emulator instead, without Docker.
 Python 3.12 is required; the web front end and its tests also need Node 20 or later (section 4).
 
 ```bash
@@ -537,7 +569,8 @@ SSH (`ssh -N -L 18400:127.0.0.1:8400 <server>`) and browse to `http://localhost:
    against the web cases) and `tools/web_mutation_check.py` (the page mutations).
 5. **Android app (build and unit tests)**: builds the debug app on an x86-64 runner and runs its unit
    tests, including a check that the app's design tokens equal the web's `tokens.css`; uploads the
-   APK. The Appium tests (section 4) run locally for now; a CI job on Google's emulator comes next.
+   APK. The Appium tests (section 4) run locally for now, on redroid and on Google's emulator on a
+   Mac; a CI job on the emulator comes next.
 
 A separate, manually triggered `load.yml` runs the k6 load test followed by the reconciliation
 (section 6).
@@ -556,7 +589,7 @@ into test automation (SDET). The work was divided as follows:
 
 | My part | Claude Code's part |
 |---|---|
-| Set the requirements: the scope of the wallet API, which payment risks to cover, no Docker, CI required | Proposed a plan, a folder structure and a test-case list from those requirements |
+| Set the requirements: the scope of the wallet API, which payment risks to cover, no Docker for the API and its tests, CI required | Proposed a plan, a folder structure and a test-case list from those requirements |
 | Reviewed the test-case list item by item and decided on changes (for example, supporting two decimal places in amounts) | Wrote the API, the test framework and the tests |
 | Read the explanation of each step, ran it myself, and moved on only once I understood it | Ran each step, reported the results, and diagnosed failures |
 | Decided when to commit and when to make the repository public | Committed in small steps, with messages that explain what changed and why |

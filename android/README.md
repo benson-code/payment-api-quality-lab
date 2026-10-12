@@ -7,7 +7,8 @@ implemented. Its Appium tests live with the rest of the suite, in [`../tests/app
 
 ## Build
 
-Requires JDK 17 or later and an Android SDK with platform 36.
+Requires a JDK that Gradle 8.14 runs on (CI uses 21; on JDK 25 the build fails at once) and an
+Android SDK with platform 36.
 
 ```bash
 cd android
@@ -37,6 +38,11 @@ did not work, for the record: Ubuntu's own arm64 `aapt2` (package `aapt`, Androi
 platform 36's `android.jar`, and command-line tools 23.0 replaced the Java `sdkmanager` with an x86-64
 binary (version 19.0 still works). When AGP is upgraded, the wrapper must point at the matching
 `aapt2` version. CI builds on x86-64 runners and needs none of this.
+
+### On a Mac with Apple silicon
+
+Google publishes `aapt2` and the emulator for macOS on Apple silicon, so the build needs nothing
+extra, and the Appium tests can run on Google's Android Emulator there (main README, section 4).
 
 ## Versions
 
