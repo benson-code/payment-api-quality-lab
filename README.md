@@ -382,7 +382,7 @@ found the API accepting `１００`.
 (cd android && ./gradlew assembleDebug)          # the debug build: only it accepts the proxy's address
 appium --address 127.0.0.1 --port 4723           # Appium 3 and the uiautomator2 driver, another terminal
 export ANDROID_SERIAL=127.0.0.1:5555                      # the device, when adb sees more than one
-.venv/bin/pytest tests/app --app                          # 54 runs, 5 to 8 minutes (devices below)
+.venv/bin/pytest tests/app --app                          # 54 runs, 5 to 9 minutes (devices below)
 .venv/bin/python tools/fault_check.py --app-only          # planted defects, app cases only
 .venv/bin/python tools/parity_check.py                    # web and app compared; needs the web build too
 ```
@@ -397,6 +397,7 @@ is missing.
 |---|---|---|---|---|
 | redroid: Android in a Docker container | 14 | The ARM64 Linux development machine (section 7) | `127.0.0.1:5555` | about 8 minutes |
 | Google's Android Emulator: Pixel 7 profile, arm64 image | 16 (API 36, the app's target) | A Mac with Apple silicon | `emulator-5554` | about 5 minutes |
+| Google's Android Emulator: Pixel 7 profile, x86-64 image | 16 (API 36) | GitHub's x64 Linux runner, in CI (section 8) | `emulator-5554` | about 9 minutes |
 
 redroid shares the host's Linux kernel and needs its binder driver, so it runs on Linux only. The
 emulator is a virtual machine with its own kernel (on a Mac, through Apple's Hypervisor framework),
@@ -553,7 +554,7 @@ SSH (`ssh -N -L 18400:127.0.0.1:8400 <server>`) and browse to `http://localhost:
 
 ## 8. CI
 
-`.github/workflows/ci.yml` runs five jobs on every push to `main` and on every pull request:
+`.github/workflows/ci.yml` runs six jobs on every push to `main` and on every pull request:
 
 1. **API tests**: starts the API in the background, waits for `/health`, runs the smoke tests and
    stops if they fail, then runs the full regression suite and uploads the pytest-html and JUnit
@@ -569,8 +570,12 @@ SSH (`ssh -N -L 18400:127.0.0.1:8400 <server>`) and browse to `http://localhost:
    against the web cases) and `tools/web_mutation_check.py` (the page mutations).
 5. **Android app (build and unit tests)**: builds the debug app on an x86-64 runner and runs its unit
    tests, including a check that the app's design tokens equal the web's `tokens.css`; uploads the
-   APK. The Appium tests (section 4) run locally for now, on redroid and on Google's emulator on a
-   Mac; a CI job on the emulator comes next.
+   APK.
+6. **Android app UI tests (Appium, emulator)**: installs that APK on Google's Android Emulator
+   (Pixel 7 profile, Android 16, x86-64 image, accelerated by KVM) and starts Appium 3 with the
+   UiAutomator2 driver. Runs the app tests in both display configurations, then
+   `tools/fault_check.py --app-only` (the planted defects against the app cases), and uploads the
+   report with any failure screenshots and UI trees, and the Appium log.
 
 A separate, manually triggered `load.yml` runs the k6 load test followed by the reconciliation
 (section 6).
@@ -580,6 +585,9 @@ requires only the two that fail every time: CON-001 and the balance-equals-ledge
 
 CI runs on GitHub's ARM64 runners (`ubuntu-24.04-arm`), the same architecture as the development
 machine (OCI Ampere), so a local pass cannot turn into a CI failure through architecture differences.
+The two Android jobs are the exception and run on x86-64 (`ubuntu-24.04`): Google ships the build
+tools for x86-64 Linux only, and the emulator needs KVM, which GitHub's x64 runners provide. The app
+does not depend on the architecture: its only native library, from AndroidX, is built for both.
 
 ## 9. AI-assisted development
 
