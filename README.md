@@ -10,7 +10,7 @@ systems: **double charges on retry, overdrafts under concurrency, refunds that e
 payment, rounding errors, and half-completed transfers.**
 
 A **mobile web front end** (React) is served by the same API, and **Playwright for Python** tests it
-in the same pytest suite: 14 cases in three browser engines (Chromium, WebKit, Firefox), checked
+in the same pytest suite: 16 cases in three browser engines (Chromium, WebKit, Firefox), checked
 against the database as well as the page. A native **Android app** (Kotlin, Jetpack Compose) has the
 same screens and rules, and **Appium** tests it in the same suite, through a test proxy that can hold
 a request or lose its response.
@@ -259,6 +259,9 @@ server, `api` and `db` fixtures, its marks and its `--target_case_ids` / `--targ
 - Elements are found by `data-testid` only (SPEC.md §7). Expected texts are copied from the
   specification (`testdata/messages.py`), not read from the front end's own code.
 - A failure leaves a screenshot and a Playwright trace in `reports/web/`; CI uploads them.
+- Accessibility is checked on every change: WEB-015 runs **axe-core** (WCAG 2.2 A and AA) on 17 states
+  of the page, WEB-016 moves through every screen with the keyboard. Neither replaces listening with
+  VoiceOver or TalkBack (SPEC.md §10).
 
 | Case | What it checks | Proven to fail by |
 |---|---|---|
@@ -276,6 +279,8 @@ server, `api` and `db` fixtures, its marks and its `--target_case_ids` / `--targ
 | WEB-012 | While processing, Confirm, Cancel and Back are disabled | mutation `confirm_stays_enabled` |
 | WEB-013 | Back after no answer: the same amount keeps the key, a new amount gets a new one | mutation `back_forgets_the_attempt` |
 | WEB-014 | No Retry after a top-up gets no answer (the API takes no key for top-ups) | mutation `top_up_offers_retry` |
+| WEB-015 | 17 states pass axe-core's WCAG 2.2 A and AA rules; every input has a visible label | mutations `balance_toggle_unnamed`, `amount_label_detached` |
+| WEB-016 | Tab and Shift+Tab through every screen: focus is never entirely behind the top bar or tab bar | mutation `no_scroll_padding` |
 
 **Simulating the network.** `framework/web/network.py` uses Playwright's request interception; the
 API is not changed.
@@ -291,10 +296,10 @@ API is not changed.
 1. **Planted server defects.** `tools/fault_check.py` also requires the web cases in the table to
    fail, in all three engines.
 2. **Rules that live only in the page.** No server switch can break the in-flight guard, the disabled
-   button, the pending attempt or the missing Retry. `tools/web_mutation_check.py` changes one piece
+   button, the pending attempt, the missing Retry, an accessible name, a label or the scroll padding. `tools/web_mutation_check.py` changes one piece
    of the page's code, builds that version, serves it to the tests (through the `WEB_DIST`
    environment variable) and requires the matching case to fail in every engine: a mutation caught in
-   Chromium but not in WebKit would be a problem Safari users could meet unnoticed. All four
+   Chromium but not in WebKit would be a problem Safari users could meet unnoticed. All seven
    mutations are caught in all three engines.
 
 **Running**
@@ -305,7 +310,7 @@ API is not changed.
 .venv/bin/python -m playwright install chromium webkit firefox
 sudo .venv/bin/python -m playwright install-deps webkit   # once: the libraries WebKit needs on Linux
 
-.venv/bin/pytest tests/web                       # 60 runs, about 75 seconds
+.venv/bin/pytest tests/web                       # 66 runs, 30 to 90 seconds
 .venv/bin/python tools/fault_check.py --web-only # planted defects, web cases only
 .venv/bin/python tools/web_mutation_check.py     # page mutations; needs Node on PATH
 ```
@@ -633,3 +638,5 @@ Each of these is recorded in the commit history.
 | The app's layout check passed with the two layout defects of the QA pass put back | Running each fix's removal against APP-011 (one change to the app at a time) | Android drops a text squeezed to zero width from the accessibility tree, so the crushed label was drawn but absent from every element list. Rows made of several texts now carry hooks, and the check requires every part of every row; both removals now fail APP-011 |
 | Reading a History longer than the screen stopped three rows early | APP-010 with twelve entries | `mobile: scrollGesture` reported "cannot scroll further" while it still could. The tests compare the screen before and after each scroll instead |
 | The API document at `/docs` described responses the API never gives: a `422 Validation Error` shaped `{"detail": [...]}` on every route, successes as any content, and Idempotency-Key as optional | Preparing a demo in Swagger UI: a validation error is really a 400 `INVALID_REQUEST`. The JSON Schema tests checked the responses, never the document | Each route declares its real responses (`app/responses.py`, documentation only: responses are sent as before); FastAPI's default 422 is removed and the key is marked required. CTR-004 requires the document to list exactly the statuses the API answers with, each in the documented format; it fails on the previous version |
+| Keyboard focus could land entirely behind a sticky bar: on a 360 × 640 screen, Tab to *Use another wallet* on Home left it behind the tab bar and Shift+Tab left the balance toggle behind the top bar (Chromium, WebKit); in Firefox, a History row ended behind the tab bar | Checking axe's report that the same link was too small (`target-size`, WebKit only). That report depended on the scroll position at the time of the scan; the focus problem was real | The page sets scroll padding for its sticky top bar and tab bar, and WEB-016 tabs through every screen. axe's `target-size` is left to WEB-011, which requires 44 × 44 px |
+| With the amount field's label detached, leaving only the placeholder `0.00`, the axe scan still passed | The mutation check for WEB-015: the mutant survived in all three engines | axe counts a placeholder as a field's name; a placeholder disappears as soon as the user types. WEB-015 now also requires every input to be tied to a visible `<label>` |

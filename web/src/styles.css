@@ -70,6 +70,13 @@ button { font: inherit; color: inherit; }
 .icon-button:active { background: var(--color-bg-subtle); }
 .icon-button:disabled { opacity: 0.4; cursor: default; }
 
+/* The top bar and the tab bar stay on screen while the page scrolls under them. Scroll padding
+   tells the browser so: an element that gets focus, or a message scrolled into view (L-04), lands
+   between them, not behind one (L-06, WCAG 2.2 2.4.11). Found while writing WEB-016: Tab to
+   "Use another wallet" on Home left it entirely behind the tab bar. */
+html { scroll-padding-top: 56px; }
+html:has(.tab-bar) { scroll-padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+
 /* ---- Tab bar ------------------------------------------------------------------------------ */
 
 .tab-bar {
