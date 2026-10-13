@@ -14,7 +14,7 @@ in the same pytest suite: 17 cases in three browser engines (Chromium, WebKit, F
 against the database as well as the page. A native **Android app** (Kotlin, Jetpack Compose) has the
 same screens and rules, and **Appium** tests it in the same suite, through a test proxy that can hold
 a request or lose its response. A native **iOS app** (SwiftUI) is at its first stage: Start, Home and
-Pay, with five Appium (XCUITest) cases on the iOS simulator, run on a Mac and not yet in CI.
+Pay, with six Appium (XCUITest) cases on the iOS simulator, run on a Mac and not yet in CI.
 
 The main flows are also provided as a **Postman collection** for manual use, run by **Newman** in CI.
 A **k6** load test, followed by a database reconciliation, can be triggered on demand.
@@ -458,6 +458,7 @@ the Android and web cases with the same number (IOS-008 tests what APP-008 and W
 | IOS-005 | `10.555` and amounts of 13 and 20 digits are shown as typed on Confirm and refused; nothing moves | the 13 digits, on the build before 2.11 |
 | IOS-006 | A payment above the balance is refused; *Change amount* keeps the input | |
 | IOS-008 | The server charges, the response is lost, the user retries: same key, "already gone through", one payment | `no_idempotency`; by hand: the app sending a new key on Retry |
+| IOS-018 | The text styles keep their line heights: ledger rows 67 pt apart and receipt rows 47, as on the web and Android | the build before 2.12 (61 and 43) |
 
 **Running** (macOS with Xcode 26 or later, Appium 3 with the xcuitest driver):
 
@@ -467,13 +468,13 @@ xcodebuild -project ios/Wallet.xcodeproj -scheme Wallet -configuration Debug \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build build
 xcrun simctl boot "iPhone 17"                    # any iPhone simulator: one booted, or choose with IOS_UDID
 appium --address 127.0.0.1 --port 4723           # another terminal (appium driver install xcuitest, once)
-.venv/bin/pytest tests/ios --ios                 # 5 cases in 7 runs, about 50 seconds
+.venv/bin/pytest tests/ios --ios                 # 6 cases in 8 runs, about 55 seconds
 .venv/bin/python tools/fault_check.py --ios-only # planted defects, iOS cases only
 ```
 
 On an iPhone 17 simulator (iOS 26, Xcode 27) the four cases passed three runs in a row, about 27
-seconds each; with IOS-005 (version 2.11), the 7 runs passed three times in a row, about 48 seconds
-each. The first session on a machine also builds WebDriverAgent, which takes a few minutes once.
+seconds each; with IOS-005 and IOS-018 (versions 2.11 and 2.12), the 8 runs passed three times in
+a row, about 54 seconds each. The first session on a machine also builds WebDriverAgent, which takes a few minutes once.
 Like the Android tests, they are collected only with `--ios`; with `--ios` but no simulator, Appium
 server or app build, every test fails and says what is missing.
 
@@ -696,5 +697,6 @@ Each of these is recorded in the commit history.
 | The API document at `/docs` described responses the API never gives: a `422 Validation Error` shaped `{"detail": [...]}` on every route, successes as any content, and Idempotency-Key as optional | Preparing a demo in Swagger UI: a validation error is really a 400 `INVALID_REQUEST`. The JSON Schema tests checked the responses, never the document | Each route declares its real responses (`app/responses.py`, documentation only: responses are sent as before); FastAPI's default 422 is removed and the key is marked required. CTR-004 requires the document to list exactly the statuses the API answers with, each in the documented format; it fails on the previous version |
 | Keyboard focus could land entirely behind a sticky bar: on a 360 × 640 screen, Tab to *Use another wallet* on Home left it behind the tab bar and Shift+Tab left the balance toggle behind the top bar (Chromium, WebKit); in Firefox, a History row ended behind the tab bar | Checking axe's report that the same link was too small (`target-size`, WebKit only). That report depended on the scroll position at the time of the scan; the focus problem was real | The page sets scroll padding for its sticky top bar and tab bar, and WEB-016 tabs through every screen. axe's `target-size` is left to WEB-011, which requires 44 × 44 px |
 | A 20-digit amount crashed the Android app on Confirm; the web showed a different number from 2^53 up (`9007199254740993` as `…992.00`) | Comparing the three clients' code and screens side by side: the iOS app, written last, guarded its cents against overflow, and the other two did not. Reproduced on the emulator: `NumberFormatException` in `Money.toCents` | The API takes at most 12 digits before the point, and the clients' *plain* grammar had no such limit. All three now use the API's grammar exactly, so an amount they convert always fits, and a longer one is shown as typed (SPEC R-04). WEB-005, APP-005 and IOS-005 send 13 and 20 digits |
+| Every row of text on iOS was shorter than on the web and Android: a ledger row 61 pt instead of 67, a receipt row 43 instead of 47 | The same comparison: positions on iOS drifted upward screen by screen | SwiftUI has no line height. The app set the difference from Inter's own as line spacing, which goes only between lines, so one line of Body was 18 pt high instead of 22. Half of it now also goes above and below the text, as CSS and Compose do. IOS-018 measures the distance between rows and failed before the fix |
 | On the web, amounts were not in tabular figures: the digits in History did not line up, and the receipt's `120.00` was 7 px narrower than in the apps | The same comparison, measuring every hook at the same width. The CSS said `tabular-nums`, and the development server showed it | Vite's CSS minifier moved `font-variant-numeric` before the `font` shorthand in the same rule, and the shorthand reset it; a list row's text style also reset what the row passed down. The text styles are now longhands. WEB-017 measures the drawn digits and failed in all three engines before the fix |
 | With the amount field's label detached, leaving only the placeholder `0.00`, the axe scan still passed | The mutation check for WEB-015: the mutant survived in all three engines | axe counts a placeholder as a field's name; a placeholder disappears as soon as the user types. WEB-015 now also requires every input to be tied to a visible `<label>` |
