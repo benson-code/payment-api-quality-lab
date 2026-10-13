@@ -1,6 +1,7 @@
 package lab.wallet.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -230,10 +231,15 @@ fun PayScreen(vm: PayViewModel, formats: Formats, onBack: () -> Unit, onDone: ()
                     color = WalletColors.textPrimary, modifier = Modifier.testTag("confirm-amount"))
                 Text(" TWD", style = WalletType.amountLarge, color = WalletColors.textPrimary)
             }
-            wallet?.let { ReceiptRow("From", "${it.owner} · ${Formats.maskId(it.walletId)}") }
-            if (after != null && after >= 0) {
-                RowDivider()
-                ReceiptRow("Balance after", Money.display(Money.fromCents(after)), valueTestTag = "confirm-balance-after", suffix = "TWD")
+            // The rows touch, with a hairline between them, and the last one ends the card (SPEC §7.7)
+            val showAfter = after != null && after >= 0
+            Column {
+                wallet?.let { ReceiptRow("From", "${it.owner} · ${Formats.maskId(it.walletId)}", last = !showAfter) }
+                if (showAfter) {
+                    RowDivider()
+                    ReceiptRow("Balance after", Money.display(Money.fromCents(after!!)), valueTestTag = "confirm-balance-after",
+                        suffix = "TWD", last = true)
+                }
             }
         }
         when (val s = state) {

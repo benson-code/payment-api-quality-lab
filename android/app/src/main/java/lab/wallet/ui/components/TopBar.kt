@@ -23,6 +23,8 @@ import lab.wallet.ui.theme.WalletType
 /**
  * Figma: Top bar (Back = True | False). 56 dp, title centred. With [onBack] it shows a back button
  * (hook "back"), a 48 dp touch target; [backEnabled] = false while a request is in flight (K-02).
+ * 4 dp at the sides: with the 48 dp target the back icon's centre is 28 dp from the edge, within 2 of
+ * the web's and iOS's 30 (8 + 44 / 2, SPEC §7.7).
  */
 @Composable
 fun TopBar(title: String, onBack: (() -> Unit)? = null, backEnabled: Boolean = true) {

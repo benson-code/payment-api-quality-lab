@@ -17,7 +17,8 @@ import lab.wallet.ui.theme.WalletSpacing
 /**
  * A screen: top bar, scrollable content, then either a tab bar or the screen's own bottom actions
  * (kept above the keyboard). The same padding as the web's `.content`: 16 top, 20 sides, 16 between
- * blocks. The status bar inset is applied once at the root (WalletApp).
+ * blocks, 24 at the end, also under the bottom actions (SPEC §7.7). The status bar inset is applied
+ * once at the root (WalletApp).
  */
 @Composable
 fun Screen(
@@ -43,7 +44,7 @@ fun Screen(
         if (bottom != null) {
             Column(
                 verticalArrangement = Arrangement.spacedBy(WalletSpacing.sm),
-                modifier = Modifier.fillMaxWidth().padding(start = WalletSpacing.xl, end = WalletSpacing.xl, bottom = WalletSpacing.lg),
+                modifier = Modifier.fillMaxWidth().padding(start = WalletSpacing.xl, end = WalletSpacing.xl, bottom = WalletSpacing.xxl),
                 content = bottom,
             )
         }
