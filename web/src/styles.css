@@ -172,7 +172,8 @@ html:has(.tab-bar) { scroll-padding-bottom: calc(64px + env(safe-area-inset-bott
 
 .amount-box { min-height: 72px; padding-top: var(--spacing-md); padding-bottom: var(--spacing-md); }
 .amount-box:focus-within { padding-top: calc(var(--spacing-md) - 1px); padding-bottom: calc(var(--spacing-md) - 1px); }
-.amount-box input { font: 600 28px/34px Inter, system-ui, sans-serif; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+/* Amount/Large. Longhands: the font shorthand would reset the tabular figures (tokens.css) */
+.amount-box input { font-weight: 600; font-size: 28px; line-height: 34px; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .field-error .field-box,
 .field-error .field-box:focus-within { border: 2px solid var(--color-feedback-error-text); padding-left: calc(var(--spacing-lg) - 1px); padding-right: calc(var(--spacing-lg) - 1px); }
 .field-help { color: var(--color-feedback-error-text); }

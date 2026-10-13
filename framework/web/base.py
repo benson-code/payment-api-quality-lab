@@ -74,6 +74,35 @@ class WebPage:
                 .map(x => `${x.el} ${Math.round(x.r.width)}x${Math.round(x.r.height)}`),
         })""")
 
+    def proportional_amounts(self, hooks: list[str]) -> list[str]:
+        """這些 hook 裡，數字不是用等寬字（tabular figures）畫出來的金額（SPEC.md D-07）。
+
+        量的是瀏覽器實際畫出來的寬度，不是 CSS 寫了什麼：用元素最後算出來的字型設定各畫十個 1 和
+        十個 0，等寬字兩者一樣寬，一般的數字 1 比 0 窄。原始碼寫了 tabular-nums，畫面不一定拿得到：
+        Vite 壓縮 CSS 時把它排到 font 簡寫的前面，又被簡寫重設回 normal（SPEC.md §11，2.11）。
+        每個 hook 都要在畫面上：沒等到就逾時失敗，不會因為找不到而算通過。
+        """
+        for hook in hooks:
+            self.tid(hook).first.wait_for()
+        return self.page.evaluate("""hooks => hooks.flatMap(hook =>
+            [...document.querySelectorAll(`[data-testid="${hook}"]`)]
+                .filter(e => e.getClientRects().length > 0)
+                .filter(e => {
+                    const style = getComputedStyle(e), probe = document.createElement('span');
+                    for (const p of ['font-family', 'font-size', 'font-weight', 'font-style', 'letter-spacing',
+                                     'font-variant-numeric', 'font-feature-settings'])
+                        probe.style.setProperty(p, style.getPropertyValue(p));
+                    probe.style.cssText += 'position: absolute; visibility: hidden; white-space: pre;';
+                    document.body.append(probe);
+                    probe.textContent = '1111111111';
+                    const ones = probe.getBoundingClientRect().width;
+                    probe.textContent = '0000000000';
+                    const zeros = probe.getBoundingClientRect().width;
+                    probe.remove();
+                    return Math.abs(ones - zeros) > 0.5;
+                })
+                .map(e => `${hook} "${(e.value ?? e.textContent).trim()}"`))""", hooks)
+
     def accessibility_violations(self) -> list[str]:
         """axe-core 掃描目前的畫面，回傳違反 WCAG 2.2 A、AA 的地方（SPEC.md L-03、L-05），每條一行：
         規則、嚴重程度、哪些元素、axe 的說明。

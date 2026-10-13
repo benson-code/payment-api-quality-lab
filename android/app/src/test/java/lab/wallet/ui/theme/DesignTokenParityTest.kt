@@ -52,12 +52,16 @@ class DesignTokenParityTest {
 
     @Test
     fun textStylesMatchTheWeb() {
-        val web = Regex("""\.(t-[a-z-]+) \{ font: (\d+) (\d+)px/(\d+)px [^;]*;(?: letter-spacing: (-?[0-9.]+)em;)?""")
-            .findAll(css)
-            .associate { m ->
-                val (cls, weight, size, lineHeight, spacing) = m.destructured
-                cls to DesignTokens.TextToken(weight.toInt(), size.toInt(), lineHeight.toInt(), spacing.ifEmpty { "0" }.toDouble())
-            }
+        // tokens.css writes text styles as longhands (font-weight, font-size, ...), never the font shorthand
+        val web = Regex("""\.(t-[a-z-]+) \{([^}]*)\}""").findAll(css).associate { m ->
+            val (cls, body) = m.destructured
+            fun prop(name: String) = Regex("""(?:^|;)\s*$name:\s*([^;]+);""").find(body)?.groupValues?.get(1)?.trim()
+            fun px(name: String) = prop(name)?.removeSuffix("px")?.toInt() ?: error("$cls has no $name")
+            cls to DesignTokens.TextToken(
+                prop("font-weight")?.toInt() ?: error("$cls has no font-weight"), px("font-size"), px("line-height"),
+                prop("letter-spacing")?.removeSuffix("em")?.toDouble() ?: 0.0,
+            )
+        }
         val app = DesignTokens.text.entries.associate { (figmaName, token) ->
             val cls = TEXT_CLASSES[figmaName] ?: error("no CSS class listed for text style $figmaName")
             cls to token
