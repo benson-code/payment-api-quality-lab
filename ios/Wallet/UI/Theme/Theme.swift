@@ -59,7 +59,8 @@ let minTouchTarget: CGFloat = 44
 struct WalletTextStyle {
     let font: Font
     let tracking: CGFloat
-    let lineSpacing: CGFloat
+    /// The token's line height minus Inter's own (22 - 18.15 for Body). SwiftUI has no line height (§5).
+    let leading: CGFloat
 }
 
 enum WalletType {
@@ -82,14 +83,35 @@ enum WalletType {
         let face = faces[t.weight]!
         var font = Font.custom(face, size: t.size, relativeTo: .body)
         if tabular { font = font.monospacedDigit() }
-        // SwiftUI sets the space between lines, not the line height: the difference from Inter's own
         let natural = UIFont(name: face, size: t.size)?.lineHeight ?? t.size * 1.2
-        return WalletTextStyle(font: font, tracking: t.size * t.letterSpacingEm, lineSpacing: max(0, t.lineHeight - natural))
+        return WalletTextStyle(font: font, tracking: t.size * t.letterSpacingEm, leading: max(0, t.lineHeight - natural))
+    }
+}
+
+/// The token's line height, built from what SwiftUI has: the leading goes between lines (line spacing)
+/// and half of it above and below the text, as CSS and Compose place it. With line spacing alone, a
+/// line of Body was 18 pt high instead of 22, and every row was shorter than on the web and Android
+/// (SPEC.md §11, 2.12; IOS-018). Scaled like the font, so the line height grows with Dynamic Type.
+private struct WalletText: ViewModifier {
+    let style: WalletTextStyle
+    @ScaledMetric private var leading: CGFloat
+
+    init(_ style: WalletTextStyle) {
+        self.style = style
+        _leading = ScaledMetric(wrappedValue: style.leading, relativeTo: .body)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .font(style.font)
+            .tracking(style.tracking)
+            .lineSpacing(leading)
+            .padding(.vertical, leading / 2)
     }
 }
 
 extension View {
     func walletText(_ style: WalletTextStyle) -> some View {
-        font(style.font).tracking(style.tracking).lineSpacing(style.lineSpacing)
+        modifier(WalletText(style))
     }
 }

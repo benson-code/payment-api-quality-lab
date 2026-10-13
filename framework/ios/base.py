@@ -51,6 +51,13 @@ class IosScreen:
         """整個畫面結構，一次讀完：要讀很多個元素時（例如列表的每一列），比一個一個找快得多。"""
         return ET.fromstring(self.driver.page_source.encode("utf-8"))
 
+    def frames(self, test_id: str) -> list[tuple[float, float, float, float]]:
+        """這個 hook 的每個元素在畫面上的位置：(x, y, 寬, 高)，單位是 pt，由上到下排好。
+        捲動區域外的元素也在畫面結構裡，所以也量得到。"""
+        found = [(float(e.get("x")), float(e.get("y")), float(e.get("width")), float(e.get("height")))
+                 for e in self.tree().iter() if e.get("name") == test_id]
+        return sorted(found, key=lambda f: f[1])
+
     # ---- 讀 ------------------------------------------------------------------------------
 
     def _read(self, read, test_id: str, timeout: float = TIMEOUT):
