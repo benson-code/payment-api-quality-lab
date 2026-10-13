@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged with the keys Xcode generates (GENERATE_INFOPLIST_FILE). Only what has no build setting:
+     - The practice API runs over plain HTTP on the developer's machine. NSAllowsLocalNetworking lets
+       the app reach it at 127.0.0.1 and nowhere else without TLS (Android: network_security_config.xml).
+     - The Inter fonts, taken from the Android app's resources (the project file points at them). -->
+<plist version="1.0">
+<dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>inter_regular.ttf</string>
+		<string>inter_medium.ttf</string>
+		<string>inter_semibold.ttf</string>
+		<string>inter_bold.ttf</string>
+	</array>
+</dict>
+</plist>

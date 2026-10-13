@@ -6,6 +6,7 @@
     .venv/bin/python tools/fault_check.py --web-only   # 只看網頁測試（CI 的 web 工作）
     .venv/bin/python tools/fault_check.py --app        # 再加上 Android App 的案例（要裝置）
     .venv/bin/python tools/fault_check.py --app-only   # 只看 App 的案例
+    .venv/bin/python tools/fault_check.py --ios-only   # 只看 iOS App 的案例（要 macOS 和模擬器）
 
 只看「整套有沒有紅」不夠：可能是別的測試剛好壞掉。所以每個開關都列出
 「應該被哪些測試抓到」，少一個就算失敗。
@@ -19,6 +20,9 @@ App 案例（tests/app）兩種螢幕設定各算一個。App 測試要裝置，
 加了卻跑不起來（沒裝 Appium 客戶端、沒建 APK、沒有裝置或 Appium 伺服器）直接失敗。每個開關只跑
 指定給它的 App 案例（--target_case_ids）：整套 App 測試要幾分鐘，六個開關各跑一次太久，而這裡要
 確認的只是「指定的案例有沒有失敗」。
+
+iOS App 案例（tests/ios）的規則一樣：加 --ios 或 --ios-only 才檢查，跑不起來直接失敗。只在一台模擬器上
+跑，名字前面加 ios:: 和其他測試分開（API、網頁、Android 也有同名的測試）。
 """
 from __future__ import annotations
 
@@ -62,6 +66,11 @@ APP_EXPECTED = {           # SPEC.md §8：（案例編號, 測試名稱）；{d
     "float_math": [("APP-004", "test_top_up_19_99_keeps_every_cent[{display}]")],
 }
 APK = ROOT / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+
+IOS_EXPECTED = {           # SPEC.md §8：（案例編號, 測試名稱）
+    "no_idempotency": [("IOS-008", "test_lost_response_then_retry_charges_once")],
+}
+IOS_APP = ROOT / "ios" / "build" / "Build" / "Products" / "Debug-iphonesimulator" / "Wallet.app"
 APPIUM_URL = "http://127.0.0.1:4723"
 
 
@@ -95,16 +104,40 @@ def app_unavailable() -> str | None:
     return None
 
 
-def expected_for(bug: str, api: bool, web: bool, app: bool) -> list[str]:
+def ios_unavailable() -> str | None:
+    """iOS App 測試跑不起來的原因；跑得起來回傳 None。"""
+    try:
+        import appium  # noqa: F401
+    except ImportError as e:
+        return f"the Appium client cannot be imported ({e}); pip install -r requirements-app.txt"
+    if not (IOS_APP / "Info.plist").is_file():
+        return "the iOS app is not built (see ios/README.md)"
+    try:
+        out = subprocess.run(["xcrun", "simctl", "list", "devices", "booted"], capture_output=True, text=True).stdout
+    except OSError as e:
+        return f"xcrun cannot run ({e}): the iOS app tests need macOS with Xcode"
+    booted = [line.strip() for line in out.splitlines() if "(Booted)" in line]
+    if not os.environ.get("IOS_UDID") and len(booted) != 1:
+        return f"booted simulators: {booted or 'none'}; boot one, or choose one with IOS_UDID"
+    try:
+        urllib.request.urlopen(APPIUM_URL + "/status", timeout=5)
+    except OSError as e:
+        return f"no Appium server at {APPIUM_URL} ({e})"
+    return None
+
+
+def expected_for(bug: str, api: bool, web: bool, app: bool, ios: bool = False) -> list[str]:
     names = list(EXPECTED[bug]) if api else []
     if web:
         names += [t.format(phone=p) for t in WEB_EXPECTED.get(bug, []) for p in PROFILES]
     if app:
         names += [t.format(display=d) for _, t in APP_EXPECTED.get(bug, []) for d in DISPLAYS]
+    if ios:
+        names += [f"ios::{t}" for _, t in IOS_EXPECTED.get(bug, [])]
     return names
 
 
-def failed_tests(bug: str, api: bool, web: bool, app: bool) -> set[str]:
+def failed_tests(bug: str, api: bool, web: bool, app: bool, ios: bool = False) -> set[str]:
     failed = set()
     if api or web:
         if api and web:
@@ -117,6 +150,9 @@ def failed_tests(bug: str, api: bool, web: bool, app: bool) -> set[str]:
     if app and APP_EXPECTED.get(bug):
         ids = ",".join(case for case, _ in APP_EXPECTED[bug])
         failed |= run_pytest(bug, ["tests/app", "--app", f"--target_case_ids={ids}"])
+    if ios and IOS_EXPECTED.get(bug):
+        ids = ",".join(case for case, _ in IOS_EXPECTED[bug])
+        failed |= {f"ios::{t}" for t in run_pytest(bug, ["tests/ios", "--ios", f"--target_case_ids={ids}"])}
     return failed
 
 
@@ -140,19 +176,23 @@ def run_pytest(bug: str, scope: list[str]) -> set[str]:
 
 def main(args: list[str]) -> int:
     api_only, web_only, app_only = "--api-only" in args, "--web-only" in args, "--app-only" in args
-    with_app = "--app" in args
+    ios_only = "--ios-only" in args
+    with_app, with_ios = "--app" in args, "--ios" in args
     bugs = [a for a in args if not a.startswith("--")]
     unknown = [a for a in bugs if a not in EXPECTED] + \
-        [a for a in args if a.startswith("--") and a not in ("--api-only", "--web-only", "--app-only", "--app")]
-    if api_only + web_only + app_only > 1 or (with_app and (api_only or web_only or app_only)) or unknown:
-        print("usage: fault_check.py [--api-only | --web-only | --app-only | --app] [bug ...]; "
+        [a for a in args if a.startswith("--")
+         and a not in ("--api-only", "--web-only", "--app-only", "--ios-only", "--app", "--ios")]
+    only = api_only + web_only + app_only + ios_only
+    if only > 1 or (only and (with_app or with_ios)) or unknown:
+        print("usage: fault_check.py [--api-only | --web-only | --app-only | --ios-only | [--app] [--ios]] [bug ...]; "
               f"bugs: {', '.join(EXPECTED)}")
         return 2
 
-    api = not (web_only or app_only)
-    if api_only or app_only:
+    api = not (web_only or app_only or ios_only)
+    if api_only or app_only or ios_only:
         web = False
-        print(f"web cases: not part of this run ({'--api-only' if api_only else '--app-only'})")
+        flag = "--api-only" if api_only else "--app-only" if app_only else "--ios-only"
+        print(f"web cases: not part of this run ({flag})")
     else:
         reason = web_unavailable()
         web = reason is None
@@ -169,8 +209,18 @@ def main(args: list[str]) -> int:
         print("app cases: checked")
     else:
         print("app cases: not part of this run (add --app; they need a device)")
+    ios = with_ios or ios_only
+    if ios:
+        reason = ios_unavailable()
+        if reason:
+            print(f"{'--ios-only' if ios_only else '--ios'}, but the iOS app tests cannot run: {reason}")
+            return 2
+        print("ios cases: checked")
+    else:
+        print("ios cases: not part of this run (add --ios; they need a simulator)")
     selected = bugs or list(EXPECTED)
-    for only, table, what in ((web_only, WEB_EXPECTED, "web"), (app_only, APP_EXPECTED, "app")):
+    for only, table, what in ((web_only, WEB_EXPECTED, "web"), (app_only, APP_EXPECTED, "app"),
+                              (ios_only, IOS_EXPECTED, "ios")):
         if only:
             # 沒有對應案例的開關（race、transfer_not_atomic）不用跑
             selected = [b for b in selected if table.get(b)]
@@ -180,8 +230,8 @@ def main(args: list[str]) -> int:
 
     missed = 0
     for bug in selected:
-        failed = failed_tests(bug, api, web, app)
-        not_caught = [t for t in expected_for(bug, api, web, app) if t not in failed]
+        failed = failed_tests(bug, api, web, app, ios)
+        not_caught = [t for t in expected_for(bug, api, web, app, ios) if t not in failed]
         status = "CAUGHT" if not not_caught else "MISSED"
         missed += bool(not_caught)
         print(f"{bug:<20} {status}  ({len(failed)} tests failed)")

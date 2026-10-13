@@ -13,3 +13,6 @@ android/build/
 android/app/build/
 android/local.properties
 android/captures/
+# iOS (ios/): build output and Xcode per-user state
+ios/build/
+xcuserdata/
