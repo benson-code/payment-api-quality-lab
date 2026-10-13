@@ -33,6 +33,10 @@ def test_top_up_19_99_keeps_every_cent(page, app_url, api, db):
     pytest.param("10.555", id="three-decimals"),
     # 前後有空白：API 不接受，所以確認頁也不能把它顯示成 5.00、算出付款後餘額（QA 時發現兩端都會）
     pytest.param(" 5 ", id="spaces"),
+    # API 的整數最多 12 位。13 位以上照輸入顯示（三端用同一個規則）。原本網頁照浮點數換算：
+    # 20 位數顯示成另一個數字，2^53 以上會差一；Android 換算成 Long 時溢位，App 直接當掉
+    pytest.param("1000000000000", id="13-digits"),
+    pytest.param("99999999999999999999", id="20-digits"),
 ])
 @pytest.mark.case_id("WEB-005")
 def test_invalid_amount_is_refused_and_nothing_moves(page, app_url, api, db, amount):
@@ -40,6 +44,7 @@ def test_invalid_amount_is_refused_and_nothing_moves(page, app_url, api, db, amo
 
     confirm = PayPage(page, app_url).open(wallet).continue_with(amount)
     # R-04：不是 API 會接受的寫法，就照輸入顯示，不算付款後餘額
+    expect(confirm.tid("confirm-amount")).to_have_text(amount)
     expect(confirm.tid("confirm-balance-after")).to_have_count(0)
     confirm.confirm()
 

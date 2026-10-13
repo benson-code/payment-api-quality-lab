@@ -7,8 +7,12 @@ package lab.wallet.domain
  */
 object Money {
     private const val MINUS = '−'      // the typographic minus sign, read as "minus" (SPEC D-02)
-    /** 0-9 only: on Android, \d would also match "１００" and other scripts' digits (MoneyTest). */
-    internal val PLAIN = Regex("""^[0-9]+(\.[0-9]{1,2})?$""")
+    /**
+     * The API's grammar: at most 12 digits before the point and two after. 0-9 only: on Android, \d would
+     * also match "１００" and other scripts' digits (MoneyTest). Without the 12-digit limit, a 20-digit
+     * amount overflowed toCents's Long and the app crashed on Confirm (SPEC R-04).
+     */
+    internal val PLAIN = Regex("""^[0-9]{1,12}(\.[0-9]{1,2})?$""")
 
     /** "12345.60" -> "12,345.60"; "-7.00" -> "-7.00". */
     fun display(value: String): String {

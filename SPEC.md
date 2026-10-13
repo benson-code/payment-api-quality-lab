@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Version | 2.10: the iOS app, first stage: Start, Home and Pay, with four cases on the iOS simulator (see §11) |
+| Version | 2.11: the API's 12-digit limit in every client's amount grammar, and tabular figures on the web (see §11) |
 | Date | 2026-10-13 |
 | Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules are checked on redroid (Android 14) and on Google's Android Emulator (Android 16) by the Appium cases in `tests/app/`. A rule stays *planned* until it is checked in full. **iOS app: first stage** (Start, Home, Pay), checked on the iOS simulator by the Appium cases in `tests/ios/`, on a Mac, not yet in CI. The rule tables get an iOS column when the iOS app has every screen; until then §8 lists what its cases cover |
 | Code | Web: `web/src/` (React 19 + Vite), served by the API under `/app`. App: `android/` (Kotlin, Jetpack Compose). iOS: `ios/` (Swift, SwiftUI) |
-| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-016). App: Appium for Python, `tests/app/` (APP-001 to APP-017). iOS: Appium (XCUITest) for Python, `tests/ios/` (IOS-001, 003, 006, 008) |
+| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-017). App: Appium for Python, `tests/app/` (APP-001 to APP-017). iOS: Appium (XCUITest) for Python, `tests/ios/` (IOS-001, 003, 005, 006, 008) |
 
 ## 1. Purpose
 
@@ -148,7 +148,7 @@ full), or *n/a* (does not apply).
 | R-01 | The amount field is a text field for decimals, never a numeric type that would hand the value over as a float. The amount is sent exactly as typed. | script | review |
 | R-02 | The client does not validate amounts. The API decides, and a refused amount shows the API's reason (§6.6). The only client-side condition: an empty amount (or spaces only) disables Continue, Top up and Refund. | script | script |
 | R-03 | *Left to refund* is computed as payment amount minus refunded, in integer cents. | script | script |
-| R-04 | Pay has two steps. Confirm shows the amount (as `30.00` when it is a plain amount, otherwise as typed; *plain* is the API's own grammar, digits `0`-`9` with at most two decimals and nothing else, not even spaces), the wallet it is paid from, and *Balance after* when the amount is plain and the result is not negative. | script | script |
+| R-04 | Pay has two steps. Confirm shows the amount (as `30.00` when it is a plain amount, otherwise as typed; *plain* is the API's own grammar: digits `0`-`9`, at most 12 before the point and two after, nothing else, not even spaces; a longer amount is shown as typed, so no client converts a number its integer type cannot hold), the wallet it is paid from, and *Balance after* when the amount is plain and the result is not negative. | script | script |
 
 ### 6.2 Attempts and the Idempotency-Key
 
@@ -183,6 +183,7 @@ instead of charging again. Web: `useAttempt.js`. App: the pay and payment-detail
 | D-04 | The wallet ID is shown masked: first 6 characters, `••••`, last 4. Web: the full ID is in the URL. App: the full ID is in the navigation arguments; tests take it from the API response that created the wallet. | script | script |
 | D-05 | History is newest first. Only payment rows open a detail (whole row, with a chevron). Home shows the 3 latest entries. | script | script |
 | D-06 | The balance can be hidden (`••••••`); the toggle exposes its state to assistive technology (web: `aria-pressed`; app: a toggleable state description). The choice is not kept across screens. | script | script |
+| D-07 | Amounts shown on their own are drawn in tabular figures (every digit the same width), so the digits in a list line up and an amount does not change width as it changes: the balance, *You pay*, receipts and their rows, list rows and the amount being typed. An amount inside a sentence (*Available 68.00 TWD*) is text. | script | review |
 
 ### 6.5 Layout and accessibility
 
@@ -322,7 +323,7 @@ Each pair of cases tests the same behaviour on both clients:
 | Top up `100` → receipt `100.00` / `100.00`; Home balance `100.00`; one TOPUP of 10000 cents in the ledger | WEB-002 | APP-002 | R-01, D-01 | |
 | From 100.00, pay `30` → Confirm `30.00`, balance after `70.00` → receipt → History's first row `−30.00`; one row in `payments`; one UUID v4 key, sent only on Confirm | WEB-003 | APP-003 | R-04, K-01, D-02 | |
 | Top up `19.99` → shown as `19.99`; the ledger holds 1999 cents | WEB-004 | APP-004 | D-01 | `float_math` |
-| Pay `-1`, `1e3`, `10.555`, ` 5 ` (one run each) → Confirm shows it as typed, with no *Balance after*; refused with E-01; nothing moves | WEB-005 | APP-005 | R-02, R-04, K-04, E-01 | `negative_amount` (`-1`) |
+| Pay `-1`, `1e3`, `10.555`, ` 5 `, `1000000000000` (13 digits), `99999999999999999999` (one run each) → Confirm shows it as typed, with no *Balance after*; refused with E-01; nothing moves | WEB-005 | APP-005 | R-02, R-04, K-04, E-01 | `negative_amount` (`-1`); the long amounts: the clients before 2.11 (§11) |
 | Pay more than the balance → refused with E-02; nothing charged; **Change amount** keeps the input | WEB-006 | APP-006 | R-02, K-04, E-02 | |
 | Two taps on **Confirm payment** in quick succession, request held → one request, one row in `payments` | WEB-007 | APP-007 | K-02 | web: mutation `no_in_flight_guard`; app: §9 |
 | The server charges, the response is lost → *no answer* → **Retry** → receipt with `replayed`; both requests carried the same key; one row | WEB-008 | APP-008 | K-03, K-06 | `no_idempotency` |
@@ -333,13 +334,14 @@ Each pair of cases tests the same behaviour on both clients:
 | Back after no answer: (a) the same amount (as `30.00`) keeps the key, Retry → `replayed`, one row; (b) a new amount gets a new key | WEB-013 | APP-013 | K-05 | web: mutation `back_forgets_the_attempt`; app: §9 |
 | Top-up with no answer: the user is asked to check the balance; no Retry; balance unchanged | WEB-014 | APP-014 | K-07 | web: mutation `top_up_offers_retry`; app: §9 |
 
-Web-only cases (the app has none yet for L-05 and L-06; Google's Accessibility Test Framework would be
-the tool there):
+Web-only cases (the app has none yet for L-05, L-06 and D-07; Google's Accessibility Test Framework would be
+the tool for the first two):
 
 | ID | Case | Steps and expected result | Rules | Proven to fail by |
 |---|---|---|---|---|
 | WEB-015 | Accessibility scan | 17 states: every screen, and the states that show a message or change the page (Start with an error, Home with the balance hidden and with no activity, empty History, Top up refused, Confirm with *no answer*, the `replayed` receipt, Payment detail after a refund and after a refused one). axe-core 4.13 finds no violation of the WCAG 2.2 A and AA rules, and every input is tied to a visible `<label>`: axe accepts a placeholder as a field's name, so that part of L-03 is checked separately. | L-03, L-05 | mutations `balance_toggle_unnamed`, `amount_label_detached` |
 | WEB-016 | Focus not hidden | On a 360 × 640 viewport, with History and the refund list longer than the screen: on every screen, Tab from the first element to the last, then Shift+Tab back. No focused element is entirely behind the top bar or the tab bar. | L-06 | mutation `no_scroll_padding` |
+| WEB-017 | Tabular figures | Every amount D-07 covers, on Home, History, Payment detail, Top up and its receipt, Pay, Confirm and the payment receipt, with amounts made of 1s and 0s. Drawn with the element's computed font, ten 1s are as wide as ten 0s: measured in the browser, not read from the CSS. Every listed hook must be on its screen. | D-07 | the defect itself: before 2.11 it failed in all three engines (§11) |
 
 App-only cases:
 
@@ -367,11 +369,12 @@ a simulator, so pytest collects them only with `--ios`.
 |---|---|---|---|---|
 | IOS-001 | APP-001 | Create a wallet in the app → owner, balance `0.00` and the empty state shown; one row in `wallets` | D-01 | |
 | IOS-003 | APP-003 | From 100.00, pay `30` → Confirm `30.00`, balance after `70.00` → receipt → Home: balance `70.00`, latest entry `−30.00`; one row in `payments`; one UUID v4 key, sent only on Confirm. Home's latest entries stand in for History, which the iOS app does not have yet | R-04, K-01, D-02 | |
+| IOS-005 | APP-005 | Pay `10.555`, `1000000000000`, `99999999999999999999` (one run each; the decimal pad has no minus sign, `e` or space) → Confirm shows it as typed, with no *Balance after*; refused with E-01; nothing moves | R-02, R-04, K-04, E-01 | the 13-digit amount, on the build before 2.11: Confirm showed `1,000,000,000,000.00` |
 | IOS-006 | APP-006 | Pay more than the balance → refused with E-02; nothing charged; **Change amount** keeps the input | R-02, K-04, E-02 | |
 | IOS-008 | APP-008 | The server charges, the response is lost → *no answer* → **Retry** → receipt with `replayed`; both requests carried the same key; one row | K-03, K-06 | `no_idempotency`; by hand: the app creating a new key on every submit (§9) |
 
 **The two clients against each other.** The cases above prove that each client meets this
-specification; `tools/parity_check.py` proves that the two agree. It sends the same 41 amounts
+specification; `tools/parity_check.py` proves that the two agree. It sends the same 44 amounts
 (payments, top-ups and refunds; valid, boundary and refused) through the page and through the app,
 each from a fresh wallet, and compares whether the button was enabled, what Confirm showed, the
 receipt or message, and the server's state afterwards. Displayed texts are compared with runs of
@@ -388,6 +391,7 @@ spaces collapsed, as HTML displays them.
 | K-01 | WEB-003 | APP-003 | | D-04 | — | — |
 | K-02 | WEB-007, 012 | APP-007, 012 | | D-05 | WEB-010 | APP-010 |
 | K-03 | WEB-008 | APP-008 | | D-06 | — | — |
+| | | | | D-07 | WEB-017 | — |
 | K-04 | WEB-005, 006, 009 | APP-005, 006, 009 | | L-01 | WEB-011 | APP-011 |
 | K-05 | WEB-013 | APP-013 | | L-02 | WEB-011 | APP-011 |
 | K-06 | WEB-008 | APP-008 | | L-03 | WEB-015 | — |
@@ -398,17 +402,17 @@ spaces collapsed, as HTML displays them.
 | K-08 | n/a | APP-015 | | E-03, 05 to 09 | — | — |
 
 **Not covered by a case yet, on either client:** D-03 (time zone and grouping), D-04 (masking), D-06
-(hiding the balance) and the remaining error messages; on the app also L-03, L-05 and L-06. On the web they were checked once by
+(hiding the balance) and the remaining error messages; on the app also L-03, L-05, L-06 and D-07. On the web they were checked once by
 script (§6), but nothing checks them on every change. None of them can move money.
 
-**iOS.** IOS-001, 003, 006 and 008 cover R-02, R-04, K-01, K-03, K-04, K-06, D-01, D-02 and E-02 on the
+**iOS.** IOS-001, 003, 005, 006 and 008 cover R-02, R-04, K-01, K-03, K-04, K-06, D-01, D-02, E-01 and E-02 on the
 iOS app (§8); every other rule is still planned there.
 
-**Rules that live only in the client.** WEB-007, 012 to 016 and APP-007, 012, 013, 014, 016, 017 test
+**Rules that live only in the client.** WEB-007, 012 to 017 and APP-007, 012, 013, 014, 016, 017 test
 rules that live in the client (the in-flight guard, the disabled button, the pending attempt, the
-missing Retry, accessible names and labels, the scroll padding, system Back, the saved receipt), so
-no server switch can break them. APP-017 was
-seen to fail before its fix (§11, 2.3). On the web,
+missing Retry, accessible names and labels, the scroll padding, tabular figures, system Back, the saved
+receipt), so no server switch can break them. APP-017 was seen to fail before its fix (§11, 2.3), and
+WEB-017 before its fix (§11, 2.11). On the web,
 `tools/web_mutation_check.py` proves they can fail: it changes one piece of the page's code, builds
 that version, serves it to the tests and requires the case to fail.
 
@@ -454,7 +458,8 @@ say the payment had already gone through.
   the engine Safari uses, not in Safari on an iPhone.
 - **The iOS app is at its first stage.** Start, Home and Pay only: no History, Top up or Payment
   detail. A pending attempt does not survive iOS ending the app in the background (K-08). D-03 to
-  D-06 and L-01 to L-06 are not checked by a case on iOS; the cases run on one simulator size, on a
+  D-07 and L-01 to L-06 are not checked by a case on iOS (its receipt rows' values are not in tabular
+  figures yet, D-07); the cases run on one simulator size, on a
   Mac, not in CI and not on a physical iPhone. Icons are SF Symbols, not the Figma icons. The app has
   no unit tests yet, and nothing compares its design tokens with `tokens.css` on every change. Its
   decimal pad shows the region's decimal separator: in a region that writes a comma, a dot cannot be
@@ -480,6 +485,7 @@ say the payment had already gone through.
 
 | Version | Change |
 |---|---|
+| 2.11 | **Two defects found by comparing the three clients** on the same screens at the same width, with every hook's position and size measured. (1) **The clients' *plain* grammar had no 12-digit limit**, which the API's has: an amount of 13 or more digits was converted for Confirm although the API refuses it. Each client then broke in its own way: the **Android app crashed** on Confirm with a 20-digit amount (`NumberFormatException`: the cents overflowed a `Long`); the **web showed a different number** past 2^53, computed in floating point (`9007199254740993` as `9,007,199,254,740,992.00`, 20 nines as `100,000,000,000,000,000,000.00`); the iOS app converted them while the cents fit its 64-bit integer and showed longer ones as typed. All three now use the API's grammar (R-04), so an amount they convert always fits their integers, and a longer one is shown as typed. WEB-005 and APP-005 gain a 13-digit and a 20-digit input, IOS-005 is new, and `tools/parity_check.py` sends 12, 13 and 20 digits through both clients. No money could move: the API refused them all. (2) **The web lost its tabular figures in the build** (D-07, new): Vite's CSS minifier moved `font-variant-numeric: tabular-nums` before the `font` shorthand in the same rule, and the shorthand reset it; separately, the text style on a list row's amount reset the tabular figures the row passes down. Amounts were drawn in proportional figures (the receipt's `120.00` 7 px narrower than in the apps), so the digits in History did not line up. The development server does not minify, so the page looked right there. The text styles are now longhands, never the shorthand. WEB-017 measures the drawn digits; it failed in all three engines before the fix. Android's token test reads the longhand text styles. |
 | 2.10 | **The iOS app, first stage.** A SwiftUI app (`ios/`) with Start, Home and Pay (amount, Confirm in its four states, the receipt), built from the same design tokens (all equal to `tokens.css` and the Kotlin file when written) and the same Inter font files as the Android app. Four Appium cases with the XCUITest driver in `tests/ios/`, IOS-001, 003, 006 and 008, mirroring the Android cases of the same numbers through the same test proxy: the simulator shares the Mac's network, so the app reaches the proxy on 127.0.0.1 without forwarding. On an iPhone 17 simulator (iOS 26) they pass three runs in a row, in about 27 seconds each. `tools/fault_check.py --ios-only` requires IOS-008 to fail under `no_idempotency`, and it does; by hand, IOS-008 also fails when the app sends a new key on Retry. Nothing new was found: the four cases passed on their first run. Not in CI yet. |
 | 2.9 | **Accessibility checked on every change (web).** WEB-015 runs axe-core 4.13 (WCAG 2.2 A and AA) on 17 states of the page, and WEB-016 tabs through every screen; L-03 moves from *review* to *script*, and L-05 and L-06 are new. Found: (1) **focus hidden behind the sticky bars**: on a 360 × 640 screen, Tab to *Use another wallet* on Home left it entirely behind the tab bar and Shift+Tab left the balance toggle behind the top bar (Chromium and WebKit); in Firefox, Tab left a History row behind the tab bar. The page now sets scroll padding for both bars. It came up while checking an axe `target-size` report, which itself depended on the scroll position at the time of the scan and is left to L-02. (2) **axe accepts a placeholder as a field's name**: with the amount field's label detached, axe still passed, so WEB-015 also requires a visible `<label>` for every input. Three mutations prove the new checks can fail, in all three engines. The scan found nothing else: names, contrast and ARIA already passed. |
 | 2.8 | **The app cases run in CI.** A sixth CI job installs the APK built by the Android job on Google's Android Emulator (Pixel 7 profile, Android 16, x86-64 image, KVM on GitHub's x64 runner), with Appium 3.8.0 and UiAutomator2 8.7.0. The first run: the 54 runs pass in about 9 minutes, and `tools/fault_check.py --app-only` catches all four defects that have app cases. No code change was needed. |

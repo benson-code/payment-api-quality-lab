@@ -10,11 +10,11 @@ systems: **double charges on retry, overdrafts under concurrency, refunds that e
 payment, rounding errors, and half-completed transfers.**
 
 A **mobile web front end** (React) is served by the same API, and **Playwright for Python** tests it
-in the same pytest suite: 16 cases in three browser engines (Chromium, WebKit, Firefox), checked
+in the same pytest suite: 17 cases in three browser engines (Chromium, WebKit, Firefox), checked
 against the database as well as the page. A native **Android app** (Kotlin, Jetpack Compose) has the
 same screens and rules, and **Appium** tests it in the same suite, through a test proxy that can hold
 a request or lose its response. A native **iOS app** (SwiftUI) is at its first stage: Start, Home and
-Pay, with four Appium (XCUITest) cases on the iOS simulator, run on a Mac and not yet in CI.
+Pay, with five Appium (XCUITest) cases on the iOS simulator, run on a Mac and not yet in CI.
 
 The main flows are also provided as a **Postman collection** for manual use, run by **Newman** in CI.
 A **k6** load test, followed by a database reconciliation, can be triggered on demand.
@@ -277,7 +277,7 @@ server, `api` and `db` fixtures, its marks and its `--target_case_ids` / `--targ
 | WEB-002 | A top-up reaches the balance and the ledger | |
 | WEB-003 | Pay through Confirm to the receipt and History; one UUID v4 key, sent only on Confirm | |
 | WEB-004 | A top-up of 19.99 keeps every cent | `float_math` |
-| WEB-005 | `-1`, `1e3` and `10.555` are refused and nothing moves | `negative_amount` |
+| WEB-005 | `-1`, `1e3`, `10.555`, ` 5 ` and amounts of 13 and 20 digits are shown as typed on Confirm and refused; nothing moves | `negative_amount` |
 | WEB-006 | A payment above the balance is refused; *Change amount* keeps the input | |
 | WEB-007 | Two taps in the same instant send one payment | mutation `no_in_flight_guard` |
 | WEB-008 | The server charges, the response is lost, the user retries: same key, "already gone through", one payment | `no_idempotency` |
@@ -289,6 +289,7 @@ server, `api` and `db` fixtures, its marks and its `--target_case_ids` / `--targ
 | WEB-014 | No Retry after a top-up gets no answer (the API takes no key for top-ups) | mutation `top_up_offers_retry` |
 | WEB-015 | 17 states pass axe-core's WCAG 2.2 A and AA rules; every input has a visible label | mutations `balance_toggle_unnamed`, `amount_label_detached` |
 | WEB-016 | Tab and Shift+Tab through every screen: focus is never entirely behind the top bar or tab bar | mutation `no_scroll_padding` |
+| WEB-017 | Amounts are drawn in tabular figures on every screen, measured in the browser: ten 1s as wide as ten 0s | the defect itself (the build before 2.11) |
 
 **Simulating the network.** `framework/web/network.py` uses Playwright's request interception; the
 API is not changed.
@@ -318,7 +319,7 @@ API is not changed.
 .venv/bin/python -m playwright install chromium webkit firefox
 sudo .venv/bin/python -m playwright install-deps webkit   # once: the libraries WebKit needs on Linux
 
-.venv/bin/pytest tests/web                       # 66 runs, 30 to 90 seconds
+.venv/bin/pytest tests/web                       # 75 runs, 30 to 90 seconds
 .venv/bin/python tools/fault_check.py --web-only # planted defects, web cases only
 .venv/bin/python tools/web_mutation_check.py     # page mutations; needs Node on PATH
 ```
@@ -353,7 +354,7 @@ tests what WEB-001 tests).
 | APP-002 | A top-up reaches the balance and the ledger | |
 | APP-003 | Pay through Confirm to the receipt and History; one UUID v4 key, sent only on Confirm | |
 | APP-004 | A top-up of 19.99 keeps every cent | `float_math` |
-| APP-005 | `-1`, `1e3`, `10.555` and ` 5 ` are shown as typed on Confirm, without a balance after, and refused; nothing moves | `negative_amount` (`-1`) |
+| APP-005 | `-1`, `1e3`, `10.555`, ` 5 ` and amounts of 13 and 20 digits are shown as typed on Confirm, without a balance after, and refused; nothing moves | `negative_amount` (`-1`); the 20 digits crashed the app before 2.11 |
 | APP-006 | A payment above the balance is refused; *Change amount* keeps the input | |
 | APP-007 | A double tap on Confirm sends one payment | see below |
 | APP-008 | The server charges, the response is lost, the user retries: same key, "already gone through", one payment | `no_idempotency` |
@@ -382,7 +383,7 @@ absent from every element list, so no check of element bounds could find them. T
 hooks (`receipt-row`, `balance-row`), and APP-011 requires every part of every row to be visible; the
 web applies the same rule.
 
-**Both clients side by side.** `tools/parity_check.py` sends the same 41 inputs (payment, top-up and
+**Both clients side by side.** `tools/parity_check.py` sends the same 44 inputs (payment, top-up and
 refund amounts, valid and invalid) through the page and through the app, each from a fresh wallet,
 and compares what each showed (whether the button was enabled, Confirm's amount and balance after,
 the receipt or the message) and what the server did. Its first version, run during the QA pass,
@@ -395,7 +396,7 @@ found the API accepting `１００`.
 (cd android && ./gradlew assembleDebug)          # the debug build: only it accepts the proxy's address
 appium --address 127.0.0.1 --port 4723           # Appium 3 and the uiautomator2 driver, another terminal
 export ANDROID_SERIAL=127.0.0.1:5555                      # the device, when adb sees more than one
-.venv/bin/pytest tests/app --app                          # 54 runs, 5 to 9 minutes (devices below)
+.venv/bin/pytest tests/app --app                          # 58 runs, 5 to 9 minutes (devices below)
 .venv/bin/python tools/fault_check.py --app-only          # planted defects, app cases only
 .venv/bin/python tools/parity_check.py                    # web and app compared; needs the web build too
 ```
@@ -454,6 +455,7 @@ the Android and web cases with the same number (IOS-008 tests what APP-008 and W
 |---|---|---|
 | IOS-001 | A new wallet starts at 0.00; the full wallet ID comes from the answer the proxy recorded | |
 | IOS-003 | Pay through Confirm to the receipt, then Home: balance 70.00 and the latest entry `−30.00`; one UUID v4 key, sent only on Confirm | |
+| IOS-005 | `10.555` and amounts of 13 and 20 digits are shown as typed on Confirm and refused; nothing moves | the 13 digits, on the build before 2.11 |
 | IOS-006 | A payment above the balance is refused; *Change amount* keeps the input | |
 | IOS-008 | The server charges, the response is lost, the user retries: same key, "already gone through", one payment | `no_idempotency`; by hand: the app sending a new key on Retry |
 
@@ -465,14 +467,15 @@ xcodebuild -project ios/Wallet.xcodeproj -scheme Wallet -configuration Debug \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build build
 xcrun simctl boot "iPhone 17"                    # any iPhone simulator: one booted, or choose with IOS_UDID
 appium --address 127.0.0.1 --port 4723           # another terminal (appium driver install xcuitest, once)
-.venv/bin/pytest tests/ios --ios                 # 4 cases, about 30 seconds
+.venv/bin/pytest tests/ios --ios                 # 5 cases in 7 runs, about 50 seconds
 .venv/bin/python tools/fault_check.py --ios-only # planted defects, iOS cases only
 ```
 
 On an iPhone 17 simulator (iOS 26, Xcode 27) the four cases passed three runs in a row, about 27
-seconds each. The first session on a machine also builds WebDriverAgent, which takes a few minutes
-once. Like the Android tests, they are collected only with `--ios`; with `--ios` but no simulator,
-Appium server or app build, every test fails and says what is missing.
+seconds each; with IOS-005 (version 2.11), the 7 runs passed three times in a row, about 48 seconds
+each. The first session on a machine also builds WebDriverAgent, which takes a few minutes once.
+Like the Android tests, they are collected only with `--ios`; with `--ios` but no simulator, Appium
+server or app build, every test fails and says what is missing.
 
 **Next stages.** (2) The remaining screens, K-08, the app's unit tests and a macOS CI job. (3) Cases
 across clients: for example a payment made in the Android app, seen in the web page's History and
@@ -692,4 +695,6 @@ Each of these is recorded in the commit history.
 | Reading a History longer than the screen stopped three rows early | APP-010 with twelve entries | `mobile: scrollGesture` reported "cannot scroll further" while it still could. The tests compare the screen before and after each scroll instead |
 | The API document at `/docs` described responses the API never gives: a `422 Validation Error` shaped `{"detail": [...]}` on every route, successes as any content, and Idempotency-Key as optional | Preparing a demo in Swagger UI: a validation error is really a 400 `INVALID_REQUEST`. The JSON Schema tests checked the responses, never the document | Each route declares its real responses (`app/responses.py`, documentation only: responses are sent as before); FastAPI's default 422 is removed and the key is marked required. CTR-004 requires the document to list exactly the statuses the API answers with, each in the documented format; it fails on the previous version |
 | Keyboard focus could land entirely behind a sticky bar: on a 360 × 640 screen, Tab to *Use another wallet* on Home left it behind the tab bar and Shift+Tab left the balance toggle behind the top bar (Chromium, WebKit); in Firefox, a History row ended behind the tab bar | Checking axe's report that the same link was too small (`target-size`, WebKit only). That report depended on the scroll position at the time of the scan; the focus problem was real | The page sets scroll padding for its sticky top bar and tab bar, and WEB-016 tabs through every screen. axe's `target-size` is left to WEB-011, which requires 44 × 44 px |
+| A 20-digit amount crashed the Android app on Confirm; the web showed a different number from 2^53 up (`9007199254740993` as `…992.00`) | Comparing the three clients' code and screens side by side: the iOS app, written last, guarded its cents against overflow, and the other two did not. Reproduced on the emulator: `NumberFormatException` in `Money.toCents` | The API takes at most 12 digits before the point, and the clients' *plain* grammar had no such limit. All three now use the API's grammar exactly, so an amount they convert always fits, and a longer one is shown as typed (SPEC R-04). WEB-005, APP-005 and IOS-005 send 13 and 20 digits |
+| On the web, amounts were not in tabular figures: the digits in History did not line up, and the receipt's `120.00` was 7 px narrower than in the apps | The same comparison, measuring every hook at the same width. The CSS said `tabular-nums`, and the development server showed it | Vite's CSS minifier moved `font-variant-numeric` before the `font` shorthand in the same rule, and the shorthand reset it; a list row's text style also reset what the row passed down. The text styles are now longhands. WEB-017 measures the drawn digits and failed in all three engines before the fix |
 | With the amount field's label detached, leaving only the placeholder `0.00`, the axe scan still passed | The mutation check for WEB-015: the mutant survived in all three engines | axe counts a placeholder as a field's name; a placeholder disappears as soon as the user types. WEB-015 now also requires every input to be tied to a visible `<label>` |
