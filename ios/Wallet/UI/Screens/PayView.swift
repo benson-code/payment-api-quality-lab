@@ -124,13 +124,17 @@ struct PayView: View {
                 }
                 .walletText(WalletType.amountLarge)
                 .foregroundStyle(WalletColors.textPrimary)
-                if let wallet = model.wallet {
-                    ReceiptRow(label: "From", value: "\(wallet.owner) · \(Formats.maskId(wallet.walletId))")
-                }
-                if let after, after >= 0 {
-                    RowDivider()
-                    ReceiptRow(label: "Balance after", value: Money.display(Money.fromCents(after)),
-                               valueTestTag: "confirm-balance-after", suffix: "TWD")
+                // The rows touch, with a hairline between them, and the last one ends the card (SPEC §7.7)
+                let showAfter = after.map { $0 >= 0 } ?? false
+                VStack(spacing: 0) {
+                    if let wallet = model.wallet {
+                        ReceiptRow(label: "From", value: "\(wallet.owner) · \(Formats.maskId(wallet.walletId))", last: !showAfter)
+                    }
+                    if let after, showAfter {
+                        RowDivider()
+                        ReceiptRow(label: "Balance after", value: Money.display(Money.fromCents(after)),
+                                   valueTestTag: "confirm-balance-after", suffix: "TWD", last: true)
+                    }
                 }
             }
             switch state {
