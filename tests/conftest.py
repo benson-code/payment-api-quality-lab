@@ -43,20 +43,36 @@ def pytest_addoption(parser):
     a.addoption("--apk", default=str(ROOT / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"),
                 help="要測的 APK（debug 版：只有它讀啟動參數 apiBaseUrl）")
 
+    i = parser.getgroup("ios app (tests/ios)")
+    i.addoption("--ios", action="store_true",
+                help="也跑 iOS App 的 UI 測試：需要 macOS、開著的 iOS 模擬器、Appium（xcuitest driver）和建置好的 App")
+    i.addoption("--ios-udid", default=os.environ.get("IOS_UDID"),
+                help="模擬器的 UDID（預設是環境變數 IOS_UDID；只開著一台時自動選它）")
+    i.addoption("--ios-app", default=str(ROOT / "ios" / "build" / "Build" / "Products" / "Debug-iphonesimulator" / "Wallet.app"),
+                help="要測的 App（Debug 版：只有它讀啟動參數 -apiBaseUrl）")
 
-# ---- Android App 的測試要加 --app 才跑 ----------------------------------------------
+
+# ---- App 的測試要加 --app、--ios 才跑 -------------------------------------------------
+
+MOBILE = {ROOT / "tests" / "app": "--app", ROOT / "tests" / "ios": "--ios"}
+
 
 def pytest_ignore_collect(collection_path, config):
-    """tests/app 要裝置，預設不收集；連 import 都不做，沒裝 Appium 客戶端的環境（API 的 CI）也不受影響。"""
-    if collection_path == ROOT / "tests" / "app" and not config.getoption("--app"):
+    """tests/app、tests/ios 要裝置或模擬器，預設不收集；連 import 都不做，沒裝 Appium 客戶端的環境
+    （API 的 CI）也不受影響。"""
+    flag = MOBILE.get(collection_path)
+    if flag and not config.getoption(flag):
         return True
     return None
 
 
 def pytest_report_header(config):
+    lines = []
     if not config.getoption("--app"):
-        return "android app tests (tests/app): not collected; they need a device, run with --app"
-    return None
+        lines.append("android app tests (tests/app): not collected; they need a device, run with --app")
+    if not config.getoption("--ios"):
+        lines.append("ios app tests (tests/ios): not collected; they need a simulator, run with --ios")
+    return lines
 
 
 # ---- 依案例編號、標籤挑案例 ----------------------------------------------------
