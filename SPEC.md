@@ -1,12 +1,12 @@
-# Wallet clients (web and Android) — Specification
+# Wallet clients (web, Android and iOS) — Specification
 
 | | |
 |---|---|
-| Version | 2.9: automated accessibility checks on the web, and a fix for focus hidden behind the tab bar (see §11) |
+| Version | 2.10: the iOS app, first stage: Start, Home and Pay, with four cases on the iOS simulator (see §11) |
 | Date | 2026-10-13 |
-| Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules are checked on redroid (Android 14) and on Google's Android Emulator (Android 16) by the Appium cases in `tests/app/`. A rule stays *planned* until it is checked in full |
-| Code | Web: `web/src/` (React 19 + Vite), served by the API under `/app`. App: `android/` (Kotlin, Jetpack Compose) |
-| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-016). App: Appium for Python, `tests/app/` (APP-001 to APP-017) |
+| Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules are checked on redroid (Android 14) and on Google's Android Emulator (Android 16) by the Appium cases in `tests/app/`. A rule stays *planned* until it is checked in full. **iOS app: first stage** (Start, Home, Pay), checked on the iOS simulator by the Appium cases in `tests/ios/`, on a Mac, not yet in CI. The rule tables get an iOS column when the iOS app has every screen; until then §8 lists what its cases cover |
+| Code | Web: `web/src/` (React 19 + Vite), served by the API under `/app`. App: `android/` (Kotlin, Jetpack Compose). iOS: `ios/` (Swift, SwiftUI) |
+| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-016). App: Appium for Python, `tests/app/` (APP-001 to APP-017). iOS: Appium (XCUITest) for Python, `tests/ios/` (IOS-001, 003, 006, 008) |
 
 ## 1. Purpose
 
@@ -26,6 +26,10 @@ including the ones no case covers yet.
 **How the two stay in step.** A feature is done when its rule is in this document, both screens
 exist, and both a WEB and an APP case cover it. Both clients use the same test-hook names (§7); a
 parity check (planned) fails CI when a hook listed here is missing from either client's code.
+
+**A third client, iOS, at its first stage.** The iOS app (SwiftUI) has Start, Home and Pay, with the
+same rules, hook names and messages. Where this document says *the app*, it means the Android app; the
+iOS app is named where it is meant (§2, §3, §5, §7 to §10).
 
 ## 2. Architecture
 
@@ -50,6 +54,10 @@ The app reaches the API on the host through `adb reverse`: the device's `127.0.0
 forwarded over the adb connection to the host, so nothing is exposed on the network. The API's base
 URL is passed to the app at launch (debug builds only), so tests can point it at the test proxy.
 
+The iOS app runs on the iOS simulator, which shares the Mac's network: it reaches the API, or in tests
+the test proxy, at `127.0.0.1:<port>` directly, without forwarding. Its base URL is passed at launch in
+the same way, as the launch argument `-apiBaseUrl` (debug builds only).
+
 ## 3. Design source
 
 The visual design is defined in a Figma file, *Wallet – UI Spec* (private):
@@ -70,6 +78,7 @@ both places. Components use semantic names only, never primitives.
 |---|---|---|
 | Web | `web/src/tokens.css` | the variable's WEB code syntax in Figma: `color/bg/page` → `var(--color-bg-page)` |
 | App (planned) | `android/.../ui/theme/` | the same path in Kotlin: `color/bg/page` → `WalletColors.bgPage`; text styles as `WalletType.displayBalance` etc. |
+| iOS | `ios/Wallet/UI/Theme/` | the same names as the Android app; `DesignTokens.swift` keeps the Figma names |
 
 **Components.** One component per Figma component in each client:
 
@@ -87,6 +96,9 @@ both places. Components use semantic names only, never primitives.
 | Receipt row | | `components/Rows.jsx` → `ReceiptRow` | `ReceiptRow` |
 | Message | Kind = Error, Warning, Success | `components/Message.jsx` | `Message` |
 | Icons (11) | | `components/Icon.jsx` | vector drawables, same paths |
+
+The iOS app has the same components under the same names in `ios/Wallet/UI/Components/` (the first
+stage's screens need all but the tab bar), with SF Symbols in place of the Figma icons.
 
 ## 4. Screens and navigation
 
@@ -108,18 +120,19 @@ Receipts have no back button: the money has moved, and the way on is **Done**.
 
 The rules are written once; where the platforms differ, this table says how each one meets the rule.
 
-| Topic | Web | App |
-|---|---|---|
-| Amount input (R-01) | `<input type="text" inputmode="decimal">` | Compose text field with `KeyboardType.Decimal`; the value stays a `String` |
-| Money arithmetic (R-03, R-04) | integer cents in JavaScript numbers | integer cents in `Long`; never `Double` or `Float` |
-| Idempotency-Key (K-01) | UUID v4 from `crypto.getRandomValues` (works on non-secure origins) | `java.util.UUID.randomUUID()` (version 4) |
-| Touch targets (L-02) | at least 44 × 44 CSS px | at least 48 × 48 dp (Android accessibility guideline) |
-| Screen sizes (L-01, L-02) | Playwright profiles Pixel 7 (412 × 839, Chromium), iPhone 14 (390 × 664, WebKit) and Desktop Firefox (1280 × 720) | redroid 720 × 1280 at 320 dpi (360 × 640 dp) and the same device set to 1080 × 2400 at 420 dpi (411 × 914 dp) |
-| Test hooks (§7) | `data-testid` | Compose `testTag`, exposed as the resource-id (`testTagsAsResourceId`) |
-| A pending attempt survives… | navigation inside the pay screen only | navigation, screen rotation and process death (K-08) |
-| System back | the browser's back follows the URL history | defined by N-01 |
-| Digits in patterns (R-04) | `[0-9]`; JavaScript's `\d` is ASCII anyway | `[0-9]`: on Android `\d` matches any script's digits (the regex engine is ICU), on the JVM that runs the unit tests it does not. The API writes `[0-9]` too: Python's `\d` accepted `１００` |
-| Text that does not fit (L-01) | the browser's flex layout: a label never shrinks below its longest word | Compose has no such floor: rows measure the label's longest word and leave it that width |
+| Topic | Web | App | iOS (first stage) |
+|---|---|---|---|
+| Amount input (R-01) | `<input type="text" inputmode="decimal">` | Compose text field with `KeyboardType.Decimal`; the value stays a `String` | SwiftUI text field with the decimal pad; the value stays a `String`. The decimal pad shows the region's decimal separator (§10) |
+| Money arithmetic (R-03, R-04) | integer cents in JavaScript numbers | integer cents in `Long`; never `Double` or `Float` | integer cents in `Int64`; never `Double`, `Float` or `Decimal` |
+| Idempotency-Key (K-01) | UUID v4 from `crypto.getRandomValues` (works on non-secure origins) | `java.util.UUID.randomUUID()` (version 4) | `UUID()` (version 4), lower-cased as on the other clients |
+| Touch targets (L-02) | at least 44 × 44 CSS px | at least 48 × 48 dp (Android accessibility guideline) | at least 44 × 44 pt (Apple's guideline); not checked by a case yet |
+| Screen sizes (L-01, L-02) | Playwright profiles Pixel 7 (412 × 839, Chromium), iPhone 14 (390 × 664, WebKit) and Desktop Firefox (1280 × 720) | redroid 720 × 1280 at 320 dpi (360 × 640 dp) and the same device set to 1080 × 2400 at 420 dpi (411 × 914 dp) | one simulator, whichever is booted; the cases were run on an iPhone 17 (402 × 874 pt), iOS 26 |
+| Reaching the API | the same origin | `adb reverse` | directly: the simulator shares the Mac's network |
+| Test hooks (§7) | `data-testid` | Compose `testTag`, exposed as the resource-id (`testTagsAsResourceId`) | SwiftUI `accessibilityIdentifier`, found as the accessibility id |
+| A pending attempt survives… | navigation inside the pay screen only | navigation, screen rotation and process death (K-08) | navigation inside the pay screen only, for now (K-08 planned) |
+| System back | the browser's back follows the URL history | defined by N-01 | none: iOS has no system Back button, and the app uses no navigation stack, so there is no back swipe either |
+| Digits in patterns (R-04) | `[0-9]`; JavaScript's `\d` is ASCII anyway | `[0-9]`: on Android `\d` matches any script's digits (the regex engine is ICU), on the JVM that runs the unit tests it does not. The API writes `[0-9]` too: Python's `\d` accepted `１００` | `[0-9]`, anchored with `\A` and `\z`: in ICU, `$` also matches before a final line break |
+| Text that does not fit (L-01) | the browser's flex layout: a label never shrinks below its longest word | Compose has no such floor: rows measure the label's longest word and leave it that width | the currency moves under the balance when it does not fit (`ViewThatFits`); not checked by a case yet |
 
 ## 6. Rules
 
@@ -200,8 +213,8 @@ Both clients show the API's `error_code` in the same plain words (web: `messages
 
 ## 7. Screens, states and test hooks
 
-Both clients use the same hook names: `data-testid` on the web, the Compose `testTag` (exposed as
-the resource-id) in the app. Conventions:
+Every client uses the same hook names: `data-testid` on the web, the Compose `testTag` (exposed as
+the resource-id) in the Android app, the SwiftUI `accessibilityIdentifier` in the iOS app. Conventions:
 
 - A hook on an amount holds the number only: `63.00`, never `63.00 TWD`.
 - `error-message`, `no-answer`, `replayed` and `refund-done` mark the four kinds of feedback, on
@@ -339,9 +352,23 @@ App-only cases:
 `tools/fault_check.py` requires these cases to fail under their defect, on every device profile and
 display configuration (the app cases with `--app`, since they need a device):
 `float_math` → WEB-004, APP-004; `negative_amount` → WEB-005 and APP-005 (`-1`); `no_idempotency` →
-WEB-008, APP-008, APP-015; `refund_overflow` → WEB-009, APP-009. `race` and `transfer_not_atomic` have
+WEB-008, APP-008, APP-015 and IOS-008 (with `--ios`); `refund_overflow` → WEB-009, APP-009. `race` and `transfer_not_atomic` have
 no client case: one user cannot produce concurrent requests through one screen, and there is no
 transfer screen.
+
+**iOS (first stage).** Appium with the XCUITest driver, on one iOS simulator (whichever is booted; the
+cases were run on an iPhone 17 with iOS 26), on a Mac. The cases use the Android tests' test proxy;
+the simulator reaches it on 127.0.0.1 without forwarding. Each test starts the app fresh with the
+proxy's address and the time zone (`TZ`, Asia/Taipei) as launch settings, checks the database as well
+as the screen, and fails if the app is no longer running in the foreground. The tests need macOS and
+a simulator, so pytest collects them only with `--ios`.
+
+| ID | Mirrors | Steps and expected result | Rules | Proven to fail by |
+|---|---|---|---|---|
+| IOS-001 | APP-001 | Create a wallet in the app → owner, balance `0.00` and the empty state shown; one row in `wallets` | D-01 | |
+| IOS-003 | APP-003 | From 100.00, pay `30` → Confirm `30.00`, balance after `70.00` → receipt → Home: balance `70.00`, latest entry `−30.00`; one row in `payments`; one UUID v4 key, sent only on Confirm. Home's latest entries stand in for History, which the iOS app does not have yet | R-04, K-01, D-02 | |
+| IOS-006 | APP-006 | Pay more than the balance → refused with E-02; nothing charged; **Change amount** keeps the input | R-02, K-04, E-02 | |
+| IOS-008 | APP-008 | The server charges, the response is lost → *no answer* → **Retry** → receipt with `replayed`; both requests carried the same key; one row | K-03, K-06 | `no_idempotency`; by hand: the app creating a new key on every submit (§9) |
 
 **The two clients against each other.** The cases above prove that each client meets this
 specification; `tools/parity_check.py` proves that the two agree. It sends the same 41 amounts
@@ -373,6 +400,9 @@ spaces collapsed, as HTML displays them.
 **Not covered by a case yet, on either client:** D-03 (time zone and grouping), D-04 (masking), D-06
 (hiding the balance) and the remaining error messages; on the app also L-03, L-05 and L-06. On the web they were checked once by
 script (§6), but nothing checks them on every change. None of them can move money.
+
+**iOS.** IOS-001, 003, 006 and 008 cover R-02, R-04, K-01, K-03, K-04, K-06, D-01, D-02 and E-02 on the
+iOS app (§8); every other rule is still planned there.
 
 **Rules that live only in the client.** WEB-007, 012 to 016 and APP-007, 012, 013, 014, 016, 017 test
 rules that live in the client (the in-flight guard, the disabled button, the pending attempt, the
@@ -411,14 +441,24 @@ rebuilt, the case run, the code restored.
 | Icon buttons drawn at 40 dp | APP-011 | passes, correctly: Compose expands a clickable smaller than 48 dp to a 48 dp touch target and reports those bounds, so the touch target is unchanged |
 | The refund message shown before the reload | APP-011 | passes: the form's bring-into-view, the second of the two fixes from 2.2, keeps the message in view on its own |
 
+On iOS, one change was run by hand for version 2.10: the attempt creates a new key on every submit, so
+Retry sends a different key. IOS-008 fails: the server takes a second payment, and the receipt does not
+say the payment had already gone through.
+
 ## 10. Known limitations
 
 - **No authentication.** Anyone with a wallet ID can use the wallet. The API has the same
   limitation; this is a practice system.
 - **No transfer screen.** Transfers are tested at the API level only.
 - **Safari's engine, not Safari.** The iPhone profile runs in Playwright's Linux build of WebKit,
-  the engine Safari uses, not in Safari on an iPhone; and there is no iOS app: iOS cannot be built or
-  run on this project's Linux machines.
+  the engine Safari uses, not in Safari on an iPhone.
+- **The iOS app is at its first stage.** Start, Home and Pay only: no History, Top up or Payment
+  detail. A pending attempt does not survive iOS ending the app in the background (K-08). D-03 to
+  D-06 and L-01 to L-06 are not checked by a case on iOS; the cases run on one simulator size, on a
+  Mac, not in CI and not on a physical iPhone. Icons are SF Symbols, not the Figma icons. The app has
+  no unit tests yet, and nothing compares its design tokens with `tokens.css` on every change. Its
+  decimal pad shows the region's decimal separator: in a region that writes a comma, a dot cannot be
+  typed, and an amount with a comma is refused (E-01). Not tried on a simulator set to such a region yet.
 - **Accessibility is checked by computation, not by listening.** WEB-015 and WEB-016 catch what can
   be computed from the page: names, labels, contrast, ARIA, focus behind a bar. Whether VoiceOver or
   TalkBack reads a screen in a sensible order and wording has not been checked. Firefox does not
@@ -440,6 +480,7 @@ rebuilt, the case run, the code restored.
 
 | Version | Change |
 |---|---|
+| 2.10 | **The iOS app, first stage.** A SwiftUI app (`ios/`) with Start, Home and Pay (amount, Confirm in its four states, the receipt), built from the same design tokens (all equal to `tokens.css` and the Kotlin file when written) and the same Inter font files as the Android app. Four Appium cases with the XCUITest driver in `tests/ios/`, IOS-001, 003, 006 and 008, mirroring the Android cases of the same numbers through the same test proxy: the simulator shares the Mac's network, so the app reaches the proxy on 127.0.0.1 without forwarding. On an iPhone 17 simulator (iOS 26) they pass three runs in a row, in about 27 seconds each. `tools/fault_check.py --ios-only` requires IOS-008 to fail under `no_idempotency`, and it does; by hand, IOS-008 also fails when the app sends a new key on Retry. Nothing new was found: the four cases passed on their first run. Not in CI yet. |
 | 2.9 | **Accessibility checked on every change (web).** WEB-015 runs axe-core 4.13 (WCAG 2.2 A and AA) on 17 states of the page, and WEB-016 tabs through every screen; L-03 moves from *review* to *script*, and L-05 and L-06 are new. Found: (1) **focus hidden behind the sticky bars**: on a 360 × 640 screen, Tab to *Use another wallet* on Home left it entirely behind the tab bar and Shift+Tab left the balance toggle behind the top bar (Chromium and WebKit); in Firefox, Tab left a History row behind the tab bar. The page now sets scroll padding for both bars. It came up while checking an axe `target-size` report, which itself depended on the scroll position at the time of the scan and is left to L-02. (2) **axe accepts a placeholder as a field's name**: with the amount field's label detached, axe still passed, so WEB-015 also requires a visible `<label>` for every input. Three mutations prove the new checks can fail, in all three engines. The scan found nothing else: names, contrast and ARIA already passed. |
 | 2.8 | **The app cases run in CI.** A sixth CI job installs the APK built by the Android job on Google's Android Emulator (Pixel 7 profile, Android 16, x86-64 image, KVM on GitHub's x64 runner), with Appium 3.8.0 and UiAutomator2 8.7.0. The first run: the 54 runs pass in about 9 minutes, and `tools/fault_check.py --app-only` catches all four defects that have app cases. No code change was needed. |
 | 2.7 | **The app cases on Google's Android Emulator.** On a Mac with Apple silicon (Pixel 7 profile, Android 16, the app's target API 36) the 54 runs pass without any change to the code, and `tools/fault_check.py --app-only` catches all four defects that have app cases. Until now the app had run on redroid (Android 14) only. Documentation only; README section 4 lists both devices |

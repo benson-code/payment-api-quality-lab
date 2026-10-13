@@ -13,7 +13,8 @@ A **mobile web front end** (React) is served by the same API, and **Playwright f
 in the same pytest suite: 16 cases in three browser engines (Chromium, WebKit, Firefox), checked
 against the database as well as the page. A native **Android app** (Kotlin, Jetpack Compose) has the
 same screens and rules, and **Appium** tests it in the same suite, through a test proxy that can hold
-a request or lose its response.
+a request or lose its response. A native **iOS app** (SwiftUI) is at its first stage: Start, Home and
+Pay, with four Appium (XCUITest) cases on the iOS simulator, run on a Mac and not yet in CI.
 
 The main flows are also provided as a **Postman collection** for manual use, run by **Newman** in CI.
 A **k6** load test, followed by a database reconciliation, can be triggered on demand.
@@ -32,13 +33,14 @@ switch, so for those CI changes the page's code instead and requires the matchin
 | Floating-point arithmetic loses a cent | PRC-005, WEB-004 | `float_math`: 19.99 × 100 = 1998.9999… |
 | A transfer debits the sender but never credits the receiver | TRF-006, DB-001 | `transfer_not_atomic`: debit and credit run in separate transactions |
 
-The same screens on both clients. The server took the payment but its answer was lost; the user
+The same screens on every client. The server took the payment but its answer was lost; the user
 retries, and the retry is recognised instead of charged again:
 
 <table>
 <tr><th></th><th>Home</th><th>No answer: retrying is safe</th><th>The retry: not charged again</th></tr>
 <tr><th>Web</th><td><img src="docs/screenshots/web-home.png" width="180" alt="web-home"></td><td><img src="docs/screenshots/web-no-answer.png" width="180" alt="web-no-answer"></td><td><img src="docs/screenshots/web-replayed.png" width="180" alt="web-replayed"></td></tr>
 <tr><th>Android</th><td><img src="docs/screenshots/app-home.png" width="180" alt="app-home"></td><td><img src="docs/screenshots/app-no-answer.png" width="180" alt="app-no-answer"></td><td><img src="docs/screenshots/app-replayed.png" width="180" alt="app-replayed"></td></tr>
+<tr><th>iOS</th><td><img src="docs/screenshots/ios-home.png" width="180" alt="ios-home"></td><td><img src="docs/screenshots/ios-no-answer.png" width="180" alt="ios-no-answer"></td><td><img src="docs/screenshots/ios-replayed.png" width="180" alt="ios-replayed"></td></tr>
 </table>
 
 ---
@@ -48,7 +50,7 @@ retries, and the retry is recognised instead of charged again:
 1. [Architecture](#1-architecture)
 2. [System under test](#2-system-under-test)
 3. [Test strategy](#3-test-strategy)
-4. [Web front end, Android app and UI tests](#4-web-front-end-android-app-and-ui-tests)
+4. [Web front end, Android and iOS apps, UI tests](#4-web-front-end-android-and-ios-apps-ui-tests)
 5. [Postman and Newman](#5-postman-and-newman)
 6. [Load testing (k6)](#6-load-testing-k6)
 7. [Running locally](#7-running-locally)
@@ -73,7 +75,8 @@ payment-api-quality-lab/
 │   ├── wallet_api.py          One method per endpoint
 │   ├── db.py                  Direct SQLite access: data seeding, seven database invariants
 │   ├── web/                   Web page objects (one per screen) and network control: hold, lose, block
-│   └── app/                   App screen objects, adb device control, and the test proxy: hold, lose, block
+│   ├── app/                   App screen objects, adb device control, and the test proxy: hold, lose, block
+│   └── ios/                   iOS screen objects and simulator control (simctl); the test proxy is app/'s
 ├── testdata/                  (2) Test data layer
 │   ├── schemas/*.json         JSON Schemas for every response type
 │   ├── schema.py              Validation that reports every mismatching field
@@ -86,9 +89,11 @@ payment-api-quality-lab/
 │   ├── conftest.py            API startup, fixtures, --env / --target_case_ids / --target_marks
 │   ├── test_*.py              100 API tests
 │   ├── web/                   60 web UI test runs (Playwright): three engines, failure evidence
-│   └── app/                   54 app UI test runs (Appium): device, displays, test proxy, failure evidence
-├── SPEC.md                    Specification for both clients (web, Android): rules, screens, hooks, cases
+│   ├── app/                   54 app UI test runs (Appium): device, displays, test proxy, failure evidence
+│   └── ios/                   4 iOS UI test runs (Appium XCUITest): simulator, test proxy, failure evidence
+├── SPEC.md                    Specification for the clients (web, Android, iOS): rules, screens, hooks, cases
 ├── android/                   Native Android app: Kotlin + Jetpack Compose
+├── ios/                       Native iOS app, first stage: Swift + SwiftUI
 ├── web/                       Mobile web front end: React + Vite, served by the API under /app
 │   └── src/                   tokens.css (Figma variables), components/ (one per Figma component), screens/
 ├── postman/                   Postman collection (run by Newman in CI)
@@ -101,13 +106,13 @@ payment-api-quality-lab/
 │   ├── run-load.sh            Start the API, run k6, reconcile the database
 │   └── README.md              Test types, threshold rationale, measured results
 ├── tools/
-│   ├── fault_check.py         Turns on each planted defect and checks the named pytest tests fail (--app: app cases)
+│   ├── fault_check.py         Turns on each planted defect and checks the named pytest tests fail (--app, --ios: app cases)
 │   ├── web_mutation_check.py  Breaks one piece of the web page and checks the named web case fails
 │   ├── newman_fault_check.py  The same check for the Postman collection
 │   ├── check_invariants.py    Reconciliation: runs every invariant against a database (after load tests)
 │   ├── parity_check.py        The same inputs through the web page and the app; reports any difference
 │   ├── demo.py                A clean API with a demo wallet, for showing the clients
-│   └── screenshots.py         The README screenshots, web and app, from the same demo data
+│   └── screenshots.py         The README screenshots, web and apps, from the same demo data
 ├── docs/screenshots/          Web and app screens for this README (generated)
 └── .github/workflows/         ci.yml (push to main, pull requests), load.yml (manual)
 ```
@@ -195,28 +200,31 @@ pytest --target_marks=idempotency,concurrency    # tests with any of these marks
 pytest --target_case_ids=CON-001,VAL-P08         # specific cases
 ```
 
-## 4. Web front end, Android app and UI tests
+## 4. Web front end, Android and iOS apps, UI tests
 
 A mobile-first wallet page (React 19 + Vite) in front of the same API, served by FastAPI under
 `/app`. It exists so that the risks tested at the API level are also tested where a user meets them:
 a double tap, a slow network, a response lost on its way back. There is no login and no transfer
 screen. Its specification is [`SPEC.md`](SPEC.md), which also defines the Android app with the
-same screens and behaviour (in [`android/`](android/README.md); its Appium tests are described below).
+same screens and behaviour (in [`android/`](android/README.md)), and the iOS app, at its first stage (in
+[`ios/`](ios/README.md)). The Appium tests of both apps are described below.
 
 **Screens:** Start (create or open a wallet) · Home and History tabs · Top up · Pay: amount →
 Confirm → receipt · Payment detail with refunds.
 
 <details>
-<summary>Six screens, web and Android side by side (360 × 640, the same demo data)</summary>
+<summary>Six screens, web, Android and iOS side by side (the same demo data)</summary>
+
+Web and Android at 360 × 640; iOS on an iPhone 17 simulator, whose screen is longer.
 
 <table>
-<tr><th></th><th>Web</th><th>Android</th></tr>
-<tr><td>Home</td><td><img src="docs/screenshots/web-home.png" width="200" alt="web-home"></td><td><img src="docs/screenshots/app-home.png" width="200" alt="app-home"></td></tr>
-<tr><td>History</td><td><img src="docs/screenshots/web-history.png" width="200" alt="web-history"></td><td><img src="docs/screenshots/app-history.png" width="200" alt="app-history"></td></tr>
-<tr><td>Payment detail, partly refunded</td><td><img src="docs/screenshots/web-payment.png" width="200" alt="web-payment"></td><td><img src="docs/screenshots/app-payment.png" width="200" alt="app-payment"></td></tr>
-<tr><td>Confirm</td><td><img src="docs/screenshots/web-confirm.png" width="200" alt="web-confirm"></td><td><img src="docs/screenshots/app-confirm.png" width="200" alt="app-confirm"></td></tr>
-<tr><td>No answer</td><td><img src="docs/screenshots/web-no-answer.png" width="200" alt="web-no-answer"></td><td><img src="docs/screenshots/app-no-answer.png" width="200" alt="app-no-answer"></td></tr>
-<tr><td>Receipt after the retry</td><td><img src="docs/screenshots/web-replayed.png" width="200" alt="web-replayed"></td><td><img src="docs/screenshots/app-replayed.png" width="200" alt="app-replayed"></td></tr>
+<tr><th></th><th>Web</th><th>Android</th><th>iOS</th></tr>
+<tr><td>Home</td><td><img src="docs/screenshots/web-home.png" width="200" alt="web-home"></td><td><img src="docs/screenshots/app-home.png" width="200" alt="app-home"></td><td><img src="docs/screenshots/ios-home.png" width="200" alt="ios-home"></td></tr>
+<tr><td>History</td><td><img src="docs/screenshots/web-history.png" width="200" alt="web-history"></td><td><img src="docs/screenshots/app-history.png" width="200" alt="app-history"></td><td>not yet</td></tr>
+<tr><td>Payment detail, partly refunded</td><td><img src="docs/screenshots/web-payment.png" width="200" alt="web-payment"></td><td><img src="docs/screenshots/app-payment.png" width="200" alt="app-payment"></td><td>not yet</td></tr>
+<tr><td>Confirm</td><td><img src="docs/screenshots/web-confirm.png" width="200" alt="web-confirm"></td><td><img src="docs/screenshots/app-confirm.png" width="200" alt="app-confirm"></td><td><img src="docs/screenshots/ios-confirm.png" width="200" alt="ios-confirm"></td></tr>
+<tr><td>No answer</td><td><img src="docs/screenshots/web-no-answer.png" width="200" alt="web-no-answer"></td><td><img src="docs/screenshots/app-no-answer.png" width="200" alt="app-no-answer"></td><td><img src="docs/screenshots/ios-no-answer.png" width="200" alt="ios-no-answer"></td></tr>
+<tr><td>Receipt after the retry</td><td><img src="docs/screenshots/web-replayed.png" width="200" alt="web-replayed"></td><td><img src="docs/screenshots/app-replayed.png" width="200" alt="app-replayed"></td><td><img src="docs/screenshots/ios-replayed.png" width="200" alt="ios-replayed"></td></tr>
 </table>
 
 Generated by `tools/screenshots.py`; run it again after changing a screen.
@@ -426,6 +434,50 @@ had already exited, and adb lost the device now and then (`device offline`) whil
 a session. Started with its output going to a file, the emulator did not drop again: six sessions in
 a row, the 54 runs and the defect check.
 
+### iOS app UI tests (first stage)
+
+Appium for Python with the XCUITest driver, in the same pytest suite: the iOS tests reuse the API's
+server, `api` and `db` fixtures, the case selection and the Android tests' test proxy. Each case mirrors
+the Android and web cases with the same number (IOS-008 tests what APP-008 and WEB-008 test). The app
+([`ios/`](ios/README.md), SwiftUI) has Start, Home and Pay so far.
+
+- **No forwarding.** The iOS simulator shares the Mac's network, so the debug build, launched with
+  `-apiBaseUrl`, reaches the test proxy on 127.0.0.1 directly. Android needs `adb reverse` for this.
+- Each test starts the app fresh (`terminate_app`, then `mobile: launchApp` with the launch argument and
+  a pinned time zone), opens a wallet prepared through the API, and checks the database as well as the
+  screen. A test fails if the app is no longer running in the foreground at the end; a failure leaves a
+  screenshot and the UI tree in `reports/ios/`.
+- Elements are found by the same hook names, as accessibility ids (SwiftUI `accessibilityIdentifier`),
+  and expected texts come from the same `testdata/messages.py`.
+
+| Case | What it checks | Proven to fail by |
+|---|---|---|
+| IOS-001 | A new wallet starts at 0.00; the full wallet ID comes from the answer the proxy recorded | |
+| IOS-003 | Pay through Confirm to the receipt, then Home: balance 70.00 and the latest entry `−30.00`; one UUID v4 key, sent only on Confirm | |
+| IOS-006 | A payment above the balance is refused; *Change amount* keeps the input | |
+| IOS-008 | The server charges, the response is lost, the user retries: same key, "already gone through", one payment | `no_idempotency`; by hand: the app sending a new key on Retry |
+
+**Running** (macOS with Xcode 26 or later, Appium 3 with the xcuitest driver):
+
+```bash
+.venv/bin/pip install -r requirements-app.txt
+xcodebuild -project ios/Wallet.xcodeproj -scheme Wallet -configuration Debug \
+    -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build build
+xcrun simctl boot "iPhone 17"                    # any iPhone simulator: one booted, or choose with IOS_UDID
+appium --address 127.0.0.1 --port 4723           # another terminal (appium driver install xcuitest, once)
+.venv/bin/pytest tests/ios --ios                 # 4 cases, about 30 seconds
+.venv/bin/python tools/fault_check.py --ios-only # planted defects, iOS cases only
+```
+
+On an iPhone 17 simulator (iOS 26, Xcode 27) the four cases passed three runs in a row, about 27
+seconds each. The first session on a machine also builds WebDriverAgent, which takes a few minutes
+once. Like the Android tests, they are collected only with `--ios`; with `--ios` but no simulator,
+Appium server or app build, every test fails and says what is missing.
+
+**Next stages.** (2) The remaining screens, K-08, the app's unit tests and a macOS CI job. (3) Cases
+across clients: for example a payment made in the Android app, seen in the web page's History and
+refunded in the iOS app, with the database reconciled after each step.
+
 ## 5. Postman and Newman
 
 `postman/` holds a Postman collection for the same API. It can be imported into Postman for manual
@@ -512,7 +564,7 @@ and measured results are in [`load/README.md`](load/README.md).
 The development environment is Ubuntu on an Oracle Cloud ARM64 instance (Ampere A1). The API, the
 tests and CI need no Docker; the one exception is the device for the Android app tests on that
 machine, redroid, which runs Android in a Docker container (section 4). On a Mac, the app tests run on
-Google's emulator instead, without Docker.
+Google's emulator instead, without Docker; the iOS app tests need a Mac with Xcode.
 Python 3.12 is required; the web front end and its tests also need Node 20 or later (section 4).
 
 ```bash
@@ -583,7 +635,7 @@ SSH (`ssh -N -L 18400:127.0.0.1:8400 <server>`) and browse to `http://localhost:
    report with any failure screenshots and UI trees, and the Appium log.
 
 A separate, manually triggered `load.yml` runs the k6 load test followed by the reconciliation
-(section 6).
+(section 6). The iOS app tests are not in CI yet: they need a macOS runner (section 4, next stages).
 
 Which tests fail under `race` depends on timing (six locally, five in CI), so `fault_check.py`
 requires only the two that fail every time: CON-001 and the balance-equals-ledger invariant.
@@ -607,6 +659,7 @@ into test automation (SDET). The work was divided as follows:
 | Read the explanation of each step, ran it myself, and moved on only once I understood it | Ran each step, reported the results, and diagnosed failures |
 | Decided when to commit and when to make the repository public | Committed in small steps, with messages that explain what changed and why |
 | Chose the web scope and tools: Playwright for Python in the same suite, Figma for the design and its visual direction, no transfer screen; asked for WEB-013 and WEB-014 when the traceability table showed two uncovered rules that guard against double charges | Built the Figma design system, the front end, its specification and the UI tests; found and fixed a double-charge regression it had itself introduced (next section) |
+| Set the goal of one test platform for web, Android and iOS, and started the iOS app in stages | Proposed the stages; built the first one: the SwiftUI app and its Appium (XCUITest) cases |
 
 **How I verify that the AI-written tests work:** a fully passing suite is not accepted as evidence.
 Defects are planted in the system under test, each one must make its assigned tests fail, and CI
