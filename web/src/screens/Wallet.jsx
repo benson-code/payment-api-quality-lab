@@ -56,7 +56,7 @@ export default function Wallet({ walletId }) {
               </section>
             )}
 
-            <div className="push" />
+            {/* Right after the activity, not pinned to the bottom: a secondary action of this wallet (SPEC §7.7) */}
             <a className="btn btn-ghost" href="#/" data-testid="switch-wallet">Use another wallet</a>
           </>
         )}
