@@ -71,6 +71,19 @@ class MoneyTest {
     }
 
     @Test
+    fun plainStopsAtTheApisTwelveDigits() {
+        // The API takes at most 12 digits before the point. A longer amount is not plain: it is shown as
+        // typed and never converted, so it cannot overflow the Long (a 20-digit amount crashed Confirm).
+        assertEquals("999999999999.99", Money.normalize("999999999999.99"))
+        assertEquals(99_999_999_999_999L, Money.toCents("999999999999.99"))
+        for (tooLong in listOf("1000000000000", "9223372036854775807", "99999999999999999999")) {
+            assertNull(tooLong, Money.normalize(tooLong))
+        }
+        assertTrue(Money.sameAmount("99999999999999999999", "99999999999999999999"))
+        assertFalse(Money.sameAmount("1000000000000", "1000000000000.00"))   // as typed: not the same text
+    }
+
+    @Test
     fun sameAmountComparesMoneyNotText() {
         assertTrue(Money.sameAmount("30", "30.00"))
         assertFalse(Money.sameAmount(" 30.5", "30.50"))  // the API refuses " 30.5": not the same payment

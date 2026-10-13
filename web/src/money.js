@@ -39,6 +39,8 @@ export function signedAmount(value) {
 // What the user typed, as a two-decimal amount ("30" -> "30.00"), or null if it is not a plain
 // amount. Display only: the page never decides whether an amount is valid, the API does. "Plain" is
 // the API's own grammar, so spaces are not trimmed: " 5 " shown as 5.00 on Confirm was then refused.
+// At most 12 digits before the point, as the API: a longer amount is shown as typed. Without that
+// limit, toCents went through a float past 2^53, and Confirm showed a different number (SPEC R-04).
 export function normalizeAmount(typed) {
-  return /^[0-9]+(\.[0-9]{1,2})?$/.test(typed) ? fromCents(toCents(typed)) : null;
+  return /^[0-9]{1,12}(\.[0-9]{1,2})?$/.test(typed) ? fromCents(toCents(typed)) : null;
 }

@@ -35,10 +35,11 @@ nonisolated enum Money {
         }
     }
 
-    /// Digits 0-9 only, at most two decimals, nothing else: the API's own grammar (R-04). `\A` and `\z`,
-    /// not `^` and `$`: in ICU, `$` also matches before a final line break, so "30\n" would pass.
+    /// Digits 0-9 only, at most 12 before the point and two after, nothing else: the API's own grammar
+    /// (R-04). A longer amount is shown as typed, as on the web and Android. `\A` and `\z`, not `^` and
+    /// `$`: in ICU, `$` also matches before a final line break, so "30\n" would pass.
     static func isPlain(_ typed: String) -> Bool {
-        typed.range(of: #"\A[0-9]+(\.[0-9]{1,2})?\z"#, options: .regularExpression) != nil
+        typed.range(of: #"\A[0-9]{1,12}(\.[0-9]{1,2})?\z"#, options: .regularExpression) != nil
     }
 
     /// "100.50" -> 10050. Accepts what the API sends (two decimals) and plain amounts with one or none.

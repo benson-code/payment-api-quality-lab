@@ -29,6 +29,9 @@ def test_top_up_19_99_keeps_every_cent(app, api, db):
     pytest.param("1e3", id="scientific"),
     pytest.param("10.555", id="three-decimals"),
     pytest.param(" 5 ", id="spaces"),     # API 不接受前後空白，確認頁也不能把它當成 5.00
+    # API 的整數最多 12 位，13 位以上照輸入顯示。原本 20 位數在換算成 Long 時溢位，App 當掉（WEB-005）
+    pytest.param("1000000000000", id="13-digits"),
+    pytest.param("99999999999999999999", id="20-digits"),
 ])
 @pytest.mark.case_id("APP-005")
 def test_invalid_amount_is_refused_and_nothing_moves(app, api, db, amount):
