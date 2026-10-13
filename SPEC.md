@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Version | 2.7: the app cases also run on Google's Android Emulator (see §11) |
-| Date | 2026-10-12 |
+| Version | 2.8: the app cases run in CI, on Google's Android Emulator (see §11) |
+| Date | 2026-10-13 |
 | Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules are checked on redroid (Android 14) and on Google's Android Emulator (Android 16) by the Appium cases in `tests/app/`. A rule stays *planned* until it is checked in full |
 | Code | Web: `web/src/` (React 19 + Vite), served by the API under `/app`. App: `android/` (Kotlin, Jetpack Compose) |
 | Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-014). App: Appium for Python, `tests/app/` (APP-001 to APP-017) |
@@ -287,8 +287,8 @@ iPhone 14 in WebKit (Safari's engine, in Playwright's Linux build) and Desktop F
 pinned to Asia/Taipei.
 Network conditions are produced with Playwright's request interception.
 
-**App.** Appium (UiAutomator2) locally, on redroid (Android 14) or on Google's Android Emulator
-(Android 16, on a Mac); a CI job on the emulator is planned. Every case runs in the two
+**App.** Appium (UiAutomator2) on redroid (Android 14) or on Google's Android Emulator
+(Android 16): locally on a Mac, and in CI on an x86-64 runner. Every case runs in the two
 display configurations of §5, set with `wm size` and `wm density` and restored afterwards. Time zone
 pinned on the device. Native apps cannot be intercepted like a browser, so network conditions come
 from a **test proxy** (`framework/app/proxy.py`) between the app and the API, with the same three
@@ -403,7 +403,7 @@ rebuilt, the case run, the code restored.
 - **Safari's engine, not Safari.** The iPhone profile runs in Playwright's Linux build of WebKit,
   the engine Safari uses, not in Safari on an iPhone; and there is no iOS app: iOS cannot be built or
   run on this project's Linux machines.
-- **The app is tested on redroid and Google's emulator** (a CI job on the emulator is planned), not on physical phones: no real camera,
+- **The app is tested on redroid and Google's emulator** (in CI too), not on physical phones: no real camera,
   sensors, vendor skins or Google Play services. None of the app's features need them.
 - **One currency (TWD)** and English text only.
 - **The balance-hidden choice is not remembered**, by design: it resets on every screen.
@@ -418,6 +418,7 @@ rebuilt, the case run, the code restored.
 
 | Version | Change |
 |---|---|
+| 2.8 | **The app cases run in CI.** A sixth CI job installs the APK built by the Android job on Google's Android Emulator (Pixel 7 profile, Android 16, x86-64 image, KVM on GitHub's x64 runner), with Appium 3.8.0 and UiAutomator2 8.7.0. The first run: the 54 runs pass in about 9 minutes, and `tools/fault_check.py --app-only` catches all four defects that have app cases. No code change was needed. |
 | 2.7 | **The app cases on Google's Android Emulator.** On a Mac with Apple silicon (Pixel 7 profile, Android 16, the app's target API 36) the 54 runs pass without any change to the code, and `tools/fault_check.py --app-only` catches all four defects that have app cases. Until now the app had run on redroid (Android 14) only. Documentation only; README section 4 lists both devices |
 | 2.6 | **Three browser engines on the web.** Every web case runs as Pixel 7 in Chromium, iPhone 14 in WebKit (Safari's engine; until now the iPhone profile ran in Chromium) and Desktop Firefox: 60 runs, passing three times in a row. `tools/fault_check.py` requires WEB-004, 005, 008 and 009 to fail in all three, and `tools/web_mutation_check.py` now counts a mutation as caught only when its case fails in every engine; all four defects and all four mutations are caught in all three. No case needed a change for WebKit or Firefox. |
 | 2.5 | **APP-007 to APP-017 implemented**: 17 cases in 27 tests (some cases have several parts or inputs), each run in both display configurations: 54 runs. `tools/fault_check.py --app` requires APP-004, 005, 008, 009 and 015 to fail under their defects; the client-only cases were seen to fail by hand (§9). Found while writing them: (1) Android drops a text squeezed to zero width from the accessibility tree, even with UiAutomator2's `allowInvisibleElements`, so the 2.3 layout defects (*From* crushed, *TWD* in a column) were invisible to any check based on element bounds; the rows now carry the hooks `receipt-row` and `balance-row`, and the layout cases require every part of a row to be visible (same rule on the web). (2) UiAutomator's own answer to "can this still scroll?" was wrong for Compose: it said no with three History rows below, so the tests compare the screen before and after each scroll. (3) Process death could only be tested when the app had been started with the launcher's intent; started by component name, Android opened a new task on return instead of restoring the old one. (4) The entry types' screen titles are now in §7. Also `tools/parity_check.py` (§8): its first run reported five differences that were its own mistake, reading the button's state before Compose had redrawn it after typing; the screen objects now wait for a field to show what was typed. |
