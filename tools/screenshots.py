@@ -8,7 +8,6 @@
 兩邊用同樣的示範資料（tools/demo.py 的劇本）、同樣的 360 x 640 尺寸、同樣的時區，所以並排時看得出
 兩個客戶端是同一套畫面。畫面改了就重跑，截圖不會和程式脫節。iOS 是例外：模擬器的螢幕沒辦法改成
 360 x 640，用開著的那台（iPhone 的長螢幕），縮成和其他截圖一樣寬；時區用啟動時的 TZ 環境變數固定。
-iOS App 還沒有交易紀錄和付款明細，只拍 home、confirm、no-answer、replayed。
 
     home            首頁：餘額、三個動作、最近三筆
     history         交易紀錄
@@ -181,6 +180,10 @@ def ios(api: WalletAPI, base: str) -> None:
     try:
         home().recent_rows()                           # 等最近活動載入
         shot("home")
+        history = home().tab_history()
+        shot("history")
+        history.open_payment(index=1)                  # 由新到舊：30.00、450.00、1,280.50
+        shot("payment")
         confirm = home().go_pay().continue_with(AMOUNT)
         shot("confirm")
         with proxy.lose_response("/payments"):

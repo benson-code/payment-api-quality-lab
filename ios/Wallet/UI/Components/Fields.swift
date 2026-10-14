@@ -37,24 +37,35 @@ struct WalletTextField: View {
 /// Figma: Amount field (State = Empty | Filled | Focus | Error). Hook "amount-input".
 ///
 /// The decimal keyboard; the value stays the String the user typed and is sent as typed (SPEC R-01).
+/// `error` is the API's answer, shown under the field (hook "error-message") and announced (L-03).
 struct AmountField: View {
     @Binding var value: String
     var label = "Amount"
+    var enabled = true
+    var error: String?
 
     @FocusState private var focused: Bool
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: WalletRadius.lg)
+        let (width, color): (CGFloat, Color) = if error != nil {
+            (2, WalletColors.errorText)
+        } else if focused {
+            (2, WalletColors.borderFocus)
+        } else {
+            (1, WalletColors.borderDefault)
+        }
         VStack(alignment: .leading, spacing: WalletSpacing.sm) {
             Text(label).walletText(WalletType.label).foregroundStyle(WalletColors.textSecondary)
                 .accessibilityHidden(true)
             HStack(spacing: WalletSpacing.sm) {
                 TextField("", text: $value, prompt: Text("0.00").foregroundStyle(WalletColors.textSecondary))
                     .walletText(WalletType.amountLarge)
-                    .foregroundStyle(WalletColors.textPrimary)
+                    .foregroundStyle(enabled ? WalletColors.textPrimary : WalletColors.textSecondary)
                     .tint(WalletColors.borderFocus)
                     .keyboardType(.decimalPad)
                     .focused($focused)
+                    .disabled(!enabled)
                     .accessibilityLabel(label)
                     .accessibilityIdentifier("amount-input")
                 Text("TWD").walletText(WalletType.bodyStrong).foregroundStyle(WalletColors.textSecondary)
@@ -63,8 +74,14 @@ struct AmountField: View {
             .padding(.vertical, WalletSpacing.md)
             .frame(minHeight: 72)
             .background(WalletColors.bgSurface, in: shape)
-            .overlay(shape.strokeBorder(focused ? WalletColors.borderFocus : WalletColors.borderDefault,
-                                        lineWidth: focused ? 2 : 1))
+            .overlay(shape.strokeBorder(color, lineWidth: width))
+            if let error {
+                Text(error)
+                    .walletText(WalletType.caption)
+                    .foregroundStyle(WalletColors.errorText)
+                    .accessibilityIdentifier("error-message")
+                    .onAppear { AccessibilityNotification.Announcement(error).post() }
+            }
         }
     }
 }

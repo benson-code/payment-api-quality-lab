@@ -1,4 +1,4 @@
-"""收據：付款成功之後的畫面。"""
+"""收據：儲值或付款成功之後的畫面。"""
 from __future__ import annotations
 
 from framework.ios.base import IosScreen
@@ -22,3 +22,9 @@ class ReceiptScreen(IosScreen):
         from framework.ios.home_screen import HomeScreen
         self.tap("done")
         return HomeScreen(self.driver).wait()
+
+    def view_payment(self):
+        """付款收據才有：打開這筆付款的明細。"""
+        from framework.ios.payment_detail_screen import PaymentDetailScreen
+        self.tap("view-payment")
+        return PaymentDetailScreen(self.driver).wait()

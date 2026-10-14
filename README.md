@@ -13,8 +13,8 @@ A **mobile web front end** (React) is served by the same API, and **Playwright f
 in the same pytest suite: 17 cases in three browser engines (Chromium, WebKit, Firefox), checked
 against the database as well as the page. A native **Android app** (Kotlin, Jetpack Compose) has the
 same screens and rules, and **Appium** tests it in the same suite, through a test proxy that can hold
-a request or lose its response. A native **iOS app** (SwiftUI) is at its first stage: Start, Home and
-Pay, with seven Appium (XCUITest) cases on the iOS simulator, run on a Mac and not yet in CI.
+a request or lose its response. A native **iOS app** (SwiftUI) has the same screens and rules too, with
+twelve Appium (XCUITest) cases on the iOS simulator, run on a Mac and not yet in CI.
 
 The main flows are also provided as a **Postman collection** for manual use, run by **Newman** in CI.
 A **k6** load test, followed by a database reconciliation, can be triggered on demand.
@@ -90,10 +90,10 @@ payment-api-quality-lab/
 │   ├── test_*.py              100 API tests
 │   ├── web/                   60 web UI test runs (Playwright): three engines, failure evidence
 │   ├── app/                   54 app UI test runs (Appium): device, displays, test proxy, failure evidence
-│   └── ios/                   4 iOS UI test runs (Appium XCUITest): simulator, test proxy, failure evidence
+│   └── ios/                   15 iOS UI test runs (Appium XCUITest): simulator, test proxy, failure evidence
 ├── SPEC.md                    Specification for the clients (web, Android, iOS): rules, screens, hooks, cases
 ├── android/                   Native Android app: Kotlin + Jetpack Compose
-├── ios/                       Native iOS app, first stage: Swift + SwiftUI
+├── ios/                       Native iOS app: Swift + SwiftUI
 ├── web/                       Mobile web front end: React + Vite, served by the API under /app
 │   └── src/                   tokens.css (Figma variables), components/ (one per Figma component), screens/
 ├── postman/                   Postman collection (run by Newman in CI)
@@ -206,8 +206,8 @@ A mobile-first wallet page (React 19 + Vite) in front of the same API, served by
 `/app`. It exists so that the risks tested at the API level are also tested where a user meets them:
 a double tap, a slow network, a response lost on its way back. There is no login and no transfer
 screen. Its specification is [`SPEC.md`](SPEC.md), which also defines the Android app with the
-same screens and behaviour (in [`android/`](android/README.md)), and the iOS app, at its first stage (in
-[`ios/`](ios/README.md)). The Appium tests of both apps are described below.
+same screens and behaviour (in [`android/`](android/README.md)), and the iOS app, also with the same
+screens (in [`ios/`](ios/README.md)). The Appium tests of both apps are described below.
 
 **Screens:** Start (create or open a wallet) · Home and History tabs · Top up · Pay: amount →
 Confirm → receipt · Payment detail with refunds.
@@ -220,8 +220,8 @@ Web and Android at 360 × 640; iOS on an iPhone 17 simulator, whose screen is lo
 <table>
 <tr><th></th><th>Web</th><th>Android</th><th>iOS</th></tr>
 <tr><td>Home</td><td><img src="docs/screenshots/web-home.png" width="200" alt="web-home"></td><td><img src="docs/screenshots/app-home.png" width="200" alt="app-home"></td><td><img src="docs/screenshots/ios-home.png" width="200" alt="ios-home"></td></tr>
-<tr><td>History</td><td><img src="docs/screenshots/web-history.png" width="200" alt="web-history"></td><td><img src="docs/screenshots/app-history.png" width="200" alt="app-history"></td><td>not yet</td></tr>
-<tr><td>Payment detail, partly refunded</td><td><img src="docs/screenshots/web-payment.png" width="200" alt="web-payment"></td><td><img src="docs/screenshots/app-payment.png" width="200" alt="app-payment"></td><td>not yet</td></tr>
+<tr><td>History</td><td><img src="docs/screenshots/web-history.png" width="200" alt="web-history"></td><td><img src="docs/screenshots/app-history.png" width="200" alt="app-history"></td><td><img src="docs/screenshots/ios-history.png" width="200" alt="ios-history"></td></tr>
+<tr><td>Payment detail, partly refunded</td><td><img src="docs/screenshots/web-payment.png" width="200" alt="web-payment"></td><td><img src="docs/screenshots/app-payment.png" width="200" alt="app-payment"></td><td><img src="docs/screenshots/ios-payment.png" width="200" alt="ios-payment"></td></tr>
 <tr><td>Confirm</td><td><img src="docs/screenshots/web-confirm.png" width="200" alt="web-confirm"></td><td><img src="docs/screenshots/app-confirm.png" width="200" alt="app-confirm"></td><td><img src="docs/screenshots/ios-confirm.png" width="200" alt="ios-confirm"></td></tr>
 <tr><td>No answer</td><td><img src="docs/screenshots/web-no-answer.png" width="200" alt="web-no-answer"></td><td><img src="docs/screenshots/app-no-answer.png" width="200" alt="app-no-answer"></td><td><img src="docs/screenshots/ios-no-answer.png" width="200" alt="ios-no-answer"></td></tr>
 <tr><td>Receipt after the retry</td><td><img src="docs/screenshots/web-replayed.png" width="200" alt="web-replayed"></td><td><img src="docs/screenshots/app-replayed.png" width="200" alt="app-replayed"></td><td><img src="docs/screenshots/ios-replayed.png" width="200" alt="ios-replayed"></td></tr>
@@ -435,12 +435,12 @@ had already exited, and adb lost the device now and then (`device offline`) whil
 a session. Started with its output going to a file, the emulator did not drop again: six sessions in
 a row, the 54 runs and the defect check.
 
-### iOS app UI tests (first stage)
+### iOS app UI tests
 
 Appium for Python with the XCUITest driver, in the same pytest suite: the iOS tests reuse the API's
 server, `api` and `db` fixtures, the case selection and the Android tests' test proxy. Each case mirrors
 the Android and web cases with the same number (IOS-008 tests what APP-008 and WEB-008 test). The app
-([`ios/`](ios/README.md), SwiftUI) has Start, Home and Pay so far.
+([`ios/`](ios/README.md), SwiftUI) has every screen since version 2.14 of the specification.
 
 - **No forwarding.** The iOS simulator shares the Mac's network, so the debug build, launched with
   `-apiBaseUrl`, reaches the test proxy on 127.0.0.1 directly. Android needs `adb reverse` for this.
@@ -450,14 +450,22 @@ the Android and web cases with the same number (IOS-008 tests what APP-008 and W
   screenshot and the UI tree in `reports/ios/`.
 - Elements are found by the same hook names, as accessibility ids (SwiftUI `accessibilityIdentifier`),
   and expected texts come from the same `testdata/messages.py`.
+- **No scrolling to read a list.** XCUITest sees the rows outside the visible part of a scroll view, so
+  History is read in one pass; on Android, UiAutomator sees only what is on the screen, and the tests
+  scroll and join.
 
 | Case | What it checks | Proven to fail by |
 |---|---|---|
 | IOS-001 | A new wallet starts at 0.00; the full wallet ID comes from the answer the proxy recorded | |
-| IOS-003 | Pay through Confirm to the receipt, then Home: balance 70.00 and the latest entry `−30.00`; one UUID v4 key, sent only on Confirm | |
+| IOS-002 | A top-up of 100 reaches the receipt, Home's balance and the ledger | |
+| IOS-003 | Pay through Confirm to the receipt, then History's first row `−30.00`; one UUID v4 key, sent only on Confirm | |
+| IOS-004 | A top-up of 19.99 keeps every cent | `float_math` |
 | IOS-005 | `10.555` and amounts of 13 and 20 digits are shown as typed on Confirm and refused; nothing moves | the 13 digits, on the build before 2.11 |
 | IOS-006 | A payment above the balance is refused; *Change amount* keeps the input | |
 | IOS-008 | The server charges, the response is lost, the user retries: same key, "already gone through", one payment | `no_idempotency`; by hand: the app sending a new key on Retry |
+| IOS-009 | Refund 10 of a payment of 30, opened from History; then 25 is refused, since only 20 is left | `refund_overflow` |
+| IOS-010 | Every History row matches the ledger: order, type, amount and balance after, also with 12 entries | |
+| IOS-014 | A top-up that gets no answer offers no Retry and sends no key; the user is asked to check the balance | |
 | IOS-018 | The text styles keep their line heights: ledger rows 67 pt apart and receipt rows 47, as on the web and Android | the build before 2.12 (61 and 43) |
 | IOS-019 | Amounts are in tabular figures: amounts made of 1s are as wide as the same amounts made of 0s, on Confirm, the receipt and Home | the build before 2.13 (*Balance after*, 43 against 62 pt) |
 
@@ -469,19 +477,20 @@ xcodebuild -project ios/Wallet.xcodeproj -scheme Wallet -configuration Debug \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build build
 xcrun simctl boot "iPhone 17"                    # any iPhone simulator: one booted, or choose with IOS_UDID
 appium --address 127.0.0.1 --port 4723           # another terminal (appium driver install xcuitest, once)
-.venv/bin/pytest tests/ios --ios                 # 7 cases in 9 runs, about 70 seconds
+.venv/bin/pytest tests/ios --ios                 # 12 cases in 15 runs, about 110 seconds
 .venv/bin/python tools/fault_check.py --ios-only # planted defects, iOS cases only
 ```
 
 On an iPhone 17 simulator (iOS 26, Xcode 27) the four cases passed three runs in a row, about 27
 seconds each; with IOS-005, 018 and 019 (versions 2.11 to 2.13), the 9 runs passed three times in a
-row, about 69 seconds each. The first session on a machine also builds WebDriverAgent, which takes a
+row, about 69 seconds each; with the second stage's five cases (2.14), the 15 runs passed three times
+in a row, about 107 seconds each. The first session on a machine also builds WebDriverAgent, which takes a
 few minutes once.
 Like the Android tests, they are collected only with `--ios`; with `--ios` but no simulator, Appium
 server or app build, every test fails and says what is missing.
 
-**Next stages.** (2) The remaining screens, K-08, the app's unit tests and a macOS CI job. (3) Cases
-across clients: for example a payment made in the Android app, seen in the web page's History and
+**Next stages.** The second stage, every screen, is done (2.14). Still to come: K-08, the app's unit
+tests and a macOS CI job; then cases across clients: for example a payment made in the Android app, seen in the web page's History and
 refunded in the iOS app, with the database reconciled after each step.
 
 ## 5. Postman and Newman

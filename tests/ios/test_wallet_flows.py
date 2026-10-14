@@ -1,4 +1,4 @@
-"""IOS-001、003：iOS App 上的主要流程，和 Android 的 APP-001、003、網頁的 WEB-001、003 是同一組行為。
+"""IOS-001 到 003：iOS App 上的主要流程，和 Android 的 APP-001 到 003、網頁的 WEB-001 到 003 是同一組行為。
 畫面對了還不算，資料庫也要對。"""
 import re
 
@@ -26,9 +26,24 @@ def test_new_wallet_starts_at_zero(app, proxy, db):
     assert (row["owner"], row["balance"]) == ("Alex", 0)
 
 
+@pytest.mark.case_id("IOS-002")
+def test_top_up_reaches_the_balance_and_the_ledger(app, api, db):
+    wallet = funded_wallet(api, "0.00")
+
+    receipt = app.open_wallet(wallet).go_top_up().top_up("100")
+    receipt.expect_text("result-amount", "100.00")
+    receipt.expect_text("result-balance", "100.00")
+    home = receipt.done()
+    home.expect_text("balance", "100.00")
+
+    entries = [tuple(r) for r in db.all("SELECT type, amount FROM ledger WHERE wallet_id = ?", wallet)]
+    assert entries == [("TOPUP", 10000)]
+    assert db.balance_cents(wallet) == db.ledger_sum_cents(wallet) == 10000
+
+
 @pytest.mark.idempotency
 @pytest.mark.case_id("IOS-003")
-def test_payment_goes_through_confirm_to_receipt_and_home(app, api, db, proxy):
+def test_payment_goes_through_confirm_to_receipt_and_history(app, api, db, proxy):
     wallet = funded_wallet(api, "100.00")
 
     confirm = app.open_wallet(wallet).go_pay().continue_with("30")
@@ -44,9 +59,7 @@ def test_payment_goes_through_confirm_to_receipt_and_home(app, api, db, proxy):
     receipt.expect_text("result-amount", "30.00")
     receipt.expect_text("result-balance", "70.00")
 
-    # 還沒有交易紀錄畫面（第一階段）：回到首頁看餘額和最近活動的第一列
-    home = receipt.done()
-    home.expect_text("balance", "70.00")
-    first = home.recent_rows()[0]
+    history = receipt.done().go_history()
+    first = history.rows()[0]
     assert (first.title, first.amount, first.balance) == ("Payment", f"{MINUS}30.00", "70.00")
     assert [r["amount"] for r in db.all("SELECT amount FROM payments WHERE wallet_id = ?", wallet)] == [3000]

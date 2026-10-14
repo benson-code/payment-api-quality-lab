@@ -71,7 +71,7 @@ struct IconButton: View {
 }
 
 /// Figma: Quick action. Line icon in the primary colour over a label; the whole cell is the touch
-/// target. Without an action it is shown but inactive (a screen this app does not have yet).
+/// target. Without an action it is shown but inactive.
 struct QuickAction: View {
     let label: String
     let systemName: String

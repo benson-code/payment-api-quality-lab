@@ -47,6 +47,17 @@ class IosScreen:
                 raise AssertionError(f'"{test_id}" did not appear within {timeout:.0f} s')
             time.sleep(0.2)
 
+    def wait_for_any(self, *test_ids: str, timeout: float = TIMEOUT) -> str:
+        """等其中一個出現，回傳是哪一個：例如交易紀錄可能是一列列的紀錄，也可能是空的。"""
+        deadline = time.monotonic() + timeout
+        while True:
+            for test_id in test_ids:
+                if self._all(test_id):
+                    return test_id
+            if time.monotonic() > deadline:
+                raise AssertionError(f"none of {test_ids} appeared within {timeout:.0f} s")
+            time.sleep(0.2)
+
     def tree(self) -> ET.Element:
         """整個畫面結構，一次讀完：要讀很多個元素時（例如列表的每一列），比一個一個找快得多。"""
         return ET.fromstring(self.driver.page_source.encode("utf-8"))

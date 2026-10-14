@@ -69,6 +69,8 @@ APK = ROOT / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-de
 
 IOS_EXPECTED = {           # SPEC.md §8：（案例編號, 測試名稱）
     "no_idempotency": [("IOS-008", "test_lost_response_then_retry_charges_once")],
+    "refund_overflow": [("IOS-009", "test_partial_refund_then_the_cumulative_limit")],
+    "float_math": [("IOS-004", "test_top_up_19_99_keeps_every_cent")],
 }
 IOS_APP = ROOT / "ios" / "build" / "Build" / "Products" / "Debug-iphonesimulator" / "Wallet.app"
 APPIUM_URL = "http://127.0.0.1:4723"

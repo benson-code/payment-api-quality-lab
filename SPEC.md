@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Version | 2.13: one layout for the three clients (§7.7), iOS receipt values in tabular figures, and the whole document written for three clients (see §11) |
+| Version | 2.14: the iOS app has every screen: History, Top up, Payment detail and refunds, and the tab bar; the rule tables gain an iOS column (see §11) |
 | Date | 2026-10-14 |
-| Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules are checked on redroid (Android 14) and on Google's Android Emulator (Android 16) by the Appium cases in `tests/app/`. A rule stays *planned* until it is checked in full. **iOS app: first stage** (Start, Home, Pay), checked on the iOS simulator by the Appium cases in `tests/ios/`, on a Mac, not yet in CI. The rule tables get an iOS column when the iOS app has every screen; until then §8 lists what its cases cover |
+| Status | **Web: implemented.** Rules marked *script* were checked against the running page with a browser script; *review* means checked by reading the code. **Android app: every screen implemented**; its rules are checked on redroid (Android 14) and on Google's Android Emulator (Android 16) by the Appium cases in `tests/app/`. A rule stays *planned* until it is checked in full. **iOS app: every screen implemented** since 2.14; its rules are checked on the iOS simulator by the Appium cases in `tests/ios/`, on a Mac, not yet in CI. K-08 is still planned there |
 | Code | Web: `web/src/` (React 19 + Vite), served by the API under `/app`. App: `android/` (Kotlin, Jetpack Compose). iOS: `ios/` (Swift, SwiftUI) |
-| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-017). App: Appium for Python, `tests/app/` (APP-001 to APP-017). iOS: Appium (XCUITest) for Python, `tests/ios/` (IOS-001, 003, 005, 006, 008, 018, 019) |
+| Tests | Web: Playwright for Python, `tests/web/` (WEB-001 to WEB-017). App: Appium for Python, `tests/app/` (APP-001 to APP-017). iOS: Appium (XCUITest) for Python, `tests/ios/` (IOS-001 to 006, 008 to 010, 014, 018, 019) |
 
 ## 1. Purpose
 
@@ -29,10 +29,10 @@ Android app both have its screen, and both a WEB and an APP case cover it. Every
 test-hook names (§7), messages (§6.6), design tokens (§3) and layout (§7.7); a parity check (planned)
 fails CI when a hook listed here is missing from a client's code.
 
-**The iOS app, at its first stage.** The iOS app (SwiftUI) has Start, Home and Pay so far, with the
-same rules, hook names, messages and layout. It follows the other two by stages, so the rule tables
-(§6) have no iOS column yet: §8 and §9 list what its cases cover. Where this document says *the app*,
-it means the Android app; the iOS app is named where it is meant.
+**The iOS app.** The iOS app (SwiftUI) followed the other two by stages: Start, Home and Pay first
+(2.10), every other screen since 2.14, with the same rules, hook names, messages and layout. Its cases
+mirror the Android cases of the same numbers, and the rule tables (§6) have an iOS column. Where this
+document says *the app*, it means the Android app; the iOS app is named where it is meant.
 
 ## 2. Architecture
 
@@ -93,13 +93,13 @@ primitives.
 | Figma component | Variants | Web | App | iOS |
 |---|---|---|---|---|
 | Top bar | Back = True, False | `components/TopBar.jsx` | `TopBar` | `TopBar` |
-| Tab bar | Active = Home, Pay, History | `components/TabBar.jsx` | `TabBar` | — (not yet, §4) |
+| Tab bar | Active = Home, Pay, History | `components/TabBar.jsx` | `TabBar` | `TabBar` |
 | Button | Style = Primary, Secondary, Ghost × State = Default, Disabled, Loading | `.btn` classes in `styles.css` | `WalletButton` | `WalletButton` |
-| Amount field | State = Empty, Filled, Focus, Error | `components/Fields.jsx` → `AmountField` | `AmountField` | `AmountField` (no Error state yet: Top up and refunds are not built) |
+| Amount field | State = Empty, Filled, Focus, Error | `components/Fields.jsx` → `AmountField` | `AmountField` | `AmountField` |
 | — (code only) | | `components/Fields.jsx` → `TextField` | `WalletTextField` | `WalletTextField` |
 | Balance card | Hidden = False, True | `components/BalanceCard.jsx` | `BalanceCard` | `BalanceCard` |
 | Quick action | | `screens/Wallet.jsx` (`.quick-action`) | `QuickAction` | `QuickAction` |
-| Transaction row | Direction = Credit, Debit; Show chevron | `components/Rows.jsx` → `TransactionRow` | `TransactionRow` | `TransactionRow` (no chevron yet) |
+| Transaction row | Direction = Credit, Debit; Show chevron | `components/Rows.jsx` → `TransactionRow` | `TransactionRow` | `TransactionRow` |
 | Section header | | `components/Rows.jsx` → `SectionHeader` | `SectionHeader` | `SectionHeader` |
 | Receipt row | | `components/Rows.jsx` → `ReceiptRow` | `ReceiptRow` | `ReceiptRow` |
 | Message | Kind = Error, Warning, Success | `components/Message.jsx` | `Message` | `Message` |
@@ -110,18 +110,17 @@ Web: `web/src/`. App: `android/app/src/main/java/lab/wallet/ui/components/`. iOS
 
 ## 4. Screens and navigation
 
-The web and the Android app have every screen; the iOS app has Start, Home and Pay so far. The web
-addresses screens by URL hash, the Android app by navigation destination, the iOS app by a plain
-`Route` value (no navigation stack, §5).
+Every client has every screen. The web addresses screens by URL hash, the Android app by navigation
+destination, the iOS app by a plain `Route` value (no navigation stack, §5).
 
-| Screen | Web route | App destination | iOS (first stage) | Tab bar | Back goes to |
+| Screen | Web route | App destination | iOS route | Tab bar | Back goes to |
 |---|---|---|---|---|---|
 | Start: create or open a wallet | `#/` | `start` | `.start` | no | — (app: leaves the app) |
-| Home: balance, actions, the 3 latest entries | `#/w/<wallet>` | `home/{wallet}` | `.home`: no tab bar yet; *Top up* and *History* shown inactive; payment rows do not open | Home | — (app: leaves the app) |
-| History: the ledger, grouped by day | `#/w/<wallet>/history` | `history/{wallet}` | — | History | — (app: Home tab) |
-| Top up, then its receipt | `#/w/<wallet>/topup` | `topup/{wallet}` | — | no | Home |
-| Pay: amount → Confirm → receipt | `#/w/<wallet>/pay` | `pay/{wallet}` | `.pay`: the receipt has no *View payment* yet | no | Home (from Confirm: the amount step) |
-| Payment detail and refund | `#/w/<wallet>/p/<payment>` | `payment/{wallet}/{payment}` | — | no | History |
+| Home: balance, actions, the 3 latest entries | `#/w/<wallet>` | `home/{wallet}` | `.home` | Home | — (app: leaves the app) |
+| History: the ledger, grouped by day | `#/w/<wallet>/history` | `history/{wallet}` | `.history` | History | — (app: Home tab) |
+| Top up, then its receipt | `#/w/<wallet>/topup` | `topup/{wallet}` | `.topUp` | no | Home |
+| Pay: amount → Confirm → receipt | `#/w/<wallet>/pay` | `pay/{wallet}` | `.pay` | no | Home (from Confirm: the amount step) |
+| Payment detail and refund | `#/w/<wallet>/p/<payment>` | `payment/{wallet}/{payment}` | `.payment` | no | History |
 
 Receipts have no back button: the money has moved, and the way on is **Done**.
 
@@ -129,7 +128,7 @@ Receipts have no back button: the money has moved, and the way on is **Done**.
 
 The rules are written once; where the platforms differ, this table says how each one meets the rule.
 
-| Topic | Web | App | iOS (first stage) |
+| Topic | Web | App | iOS |
 |---|---|---|---|
 | Amount input (R-01) | `<input type="text" inputmode="decimal">` | Compose text field with `KeyboardType.Decimal`; the value stays a `String` | SwiftUI text field with the decimal pad; the value stays a `String`. The decimal pad shows the region's decimal separator (§10) |
 | Money arithmetic (R-03, R-04) | integer cents in JavaScript numbers | integer cents in `Long`; never `Double` or `Float` | integer cents in `Int64`; never `Double`, `Float` or `Decimal` |
@@ -146,83 +145,83 @@ The rules are written once; where the platforms differ, this table says how each
 
 ## 6. Rules
 
-The **Web** and **App** columns say how each rule was checked on that client: *script* (checked
+The **Web**, **App** (Android) and **iOS** columns say how each rule was checked on that client: *script* (checked
 against the running client by a script), *unit* (the client's logic is checked by unit tests, not
 yet on a screen), *review* (checked by reading the code), *planned* (not implemented, or not yet in
 full), or *n/a* (does not apply).
 
 ### 6.1 Input and money
 
-| ID | Rule | Web | App |
-|---|---|---|---|
-| R-01 | The amount field is a text field for decimals, never a numeric type that would hand the value over as a float. The amount is sent exactly as typed. | script | review |
-| R-02 | The client does not validate amounts. The API decides, and a refused amount shows the API's reason (§6.6). The only client-side condition: an empty amount (or spaces only) disables Continue, Top up and Refund. | script | script |
-| R-03 | *Left to refund* is computed as payment amount minus refunded, in integer cents. | script | script |
-| R-04 | Pay has two steps. Confirm shows the amount (as `30.00` when it is a plain amount, otherwise as typed; *plain* is the API's own grammar: digits `0`-`9`, at most 12 before the point and two after, nothing else, not even spaces; a longer amount is shown as typed, so no client converts a number its integer type cannot hold), the wallet it is paid from, and *Balance after* when the amount is plain and the result is not negative. | script | script |
+| ID | Rule | Web | App | iOS |
+|---|---|---|---|---|
+| R-01 | The amount field is a text field for decimals, never a numeric type that would hand the value over as a float. The amount is sent exactly as typed. | script | review | review |
+| R-02 | The client does not validate amounts. The API decides, and a refused amount shows the API's reason (§6.6). The only client-side condition: an empty amount (or spaces only) disables Continue, Top up and Refund. | script | script | script |
+| R-03 | *Left to refund* is computed as payment amount minus refunded, in integer cents. | script | script | script |
+| R-04 | Pay has two steps. Confirm shows the amount (as `30.00` when it is a plain amount, otherwise as typed; *plain* is the API's own grammar: digits `0`-`9`, at most 12 before the point and two after, nothing else, not even spaces; a longer amount is shown as typed, so no client converts a number its integer type cannot hold), the wallet it is paid from, and *Balance after* when the amount is plain and the result is not negative. | script | script | script |
 
 ### 6.2 Attempts and the Idempotency-Key
 
 An *attempt* is one amount the user confirmed. Payments and refunds carry one Idempotency-Key per
 attempt, so that a retry of a request the server already processed returns the original result
 instead of charging again. Web: `useAttempt.js`. App: the pay and payment-detail view models. iOS:
-`Attempt.swift` and the pay model.
+`Attempt.swift` and the pay and payment-detail models.
 
-| ID | Rule | Web | App |
-|---|---|---|---|
-| K-01 | A key (UUID v4) is created when **Confirm payment** or **Refund** is tapped, not before. | script | script |
-| K-02 | While a request is in flight the button is disabled and reads *Processing…*; further taps send nothing, including a second tap that arrives before the screen has redrawn the disabled button. On Confirm, Cancel and Back are disabled too. | script | script |
-| K-03 | No answer (network error, or an answer without a JSON body): the outcome is unknown. A Warning is shown and the primary button becomes **Retry**, which sends the same amount with the same key. | script | script |
-| K-04 | An error answer is definitive and nothing was charged: the attempt ends, and the next confirm creates a new key. | script | script |
-| K-05 | Only a different amount ends an attempt that is still waiting for an answer. Amounts are compared as money (`30` and `30.00` are the same); anything that is not a plain amount, exactly as typed. Going back from Confirm and continuing with the same amount shows *no answer* again and Retry resends the same key; continuing with a different amount starts a new attempt with a new key. Refunds: the field can be edited; the button reads Retry only while it holds the pending amount. | script | script |
-| K-06 | When the API answers `Idempotent-Replayed: true`, the receipt says the payment had already gone through and was not charged again. | script | script |
-| K-07 | Top-ups take no Idempotency-Key (the API accepts none). After no answer the client asks the user to check the balance and offers no Retry, which could add the money twice. | script | script |
-| K-08 | A pending attempt (amount, key and *no answer* state) survives screen rotation and the app's process being killed in the background: reopened, the app shows Confirm with *no answer*, and Retry resends the same key. | n/a (§10) | script |
+| ID | Rule | Web | App | iOS |
+|---|---|---|---|---|
+| K-01 | A key (UUID v4) is created when **Confirm payment** or **Refund** is tapped, not before. | script | script | script |
+| K-02 | While a request is in flight the button is disabled and reads *Processing…*; further taps send nothing, including a second tap that arrives before the screen has redrawn the disabled button. On Confirm, Cancel and Back are disabled too. | script | script | review |
+| K-03 | No answer (network error, or an answer without a JSON body): the outcome is unknown. A Warning is shown and the primary button becomes **Retry**, which sends the same amount with the same key. | script | script | script |
+| K-04 | An error answer is definitive and nothing was charged: the attempt ends, and the next confirm creates a new key. | script | script | script |
+| K-05 | Only a different amount ends an attempt that is still waiting for an answer. Amounts are compared as money (`30` and `30.00` are the same); anything that is not a plain amount, exactly as typed. Going back from Confirm and continuing with the same amount shows *no answer* again and Retry resends the same key; continuing with a different amount starts a new attempt with a new key. Refunds: the field can be edited; the button reads Retry only while it holds the pending amount. | script | script | review |
+| K-06 | When the API answers `Idempotent-Replayed: true`, the receipt says the payment had already gone through and was not charged again. | script | script | script |
+| K-07 | Top-ups take no Idempotency-Key (the API accepts none). After no answer the client asks the user to check the balance and offers no Retry, which could add the money twice. | script | script | script |
+| K-08 | A pending attempt (amount, key and *no answer* state) survives screen rotation and the app's process being killed in the background: reopened, the app shows Confirm with *no answer*, and Retry resends the same key. | n/a (§10) | script | planned |
 
 ### 6.3 Navigation
 
-| ID | Rule | Web | App |
-|---|---|---|---|
-| N-01 | The system Back button or gesture does what the top bar's back does on that screen. On Confirm it returns to the amount step and keeps a pending attempt (K-05). While a request is in flight it does nothing. On a receipt it goes to Home, never back to Confirm, so a payment cannot be confirmed twice by going back. The receipt survives the app's process being killed: reopened, the app shows the receipt, never Confirm. | n/a | script |
+| ID | Rule | Web | App | iOS |
+|---|---|---|---|---|
+| N-01 | The system Back button or gesture does what the top bar's back does on that screen. On Confirm it returns to the amount step and keeps a pending attempt (K-05). While a request is in flight it does nothing. On a receipt it goes to Home, never back to Confirm, so a payment cannot be confirmed twice by going back. The receipt survives the app's process being killed: reopened, the app shows the receipt, never Confirm. | n/a | script | n/a: no system Back (§5) |
 
 ### 6.4 Display
 
-| ID | Rule | Web | App |
-|---|---|---|---|
-| D-01 | Amounts are formatted from the API's strings and never converted to floating point: two decimals, comma thousands separators (`12,345.60`). | script | script |
-| D-02 | Ledger rows: credits in green with `+`, debits in the text colour with `−` (U+2212, the minus sign, read as "minus" by screen readers). | script | script |
-| D-03 | Times are shown in the device's time zone (the API returns UTC). Rows are grouped under *Today*, *Yesterday*, `9 Oct`, or `9 Oct 2025` in another year. | script | unit |
-| D-04 | The wallet ID is shown masked: first 6 characters, `••••`, last 4. Web: the full ID is in the URL. App: the full ID is in the navigation arguments; tests take it from the API response that created the wallet. | script | script |
-| D-05 | History is newest first. Only payment rows open a detail (whole row, with a chevron). Home shows the 3 latest entries. | script | script |
-| D-06 | The balance can be hidden (`••••••`); the toggle exposes its state to assistive technology (web: `aria-pressed`; app: a toggleable state description). The choice is not kept across screens. | script | script |
-| D-07 | Amounts shown on their own are drawn in tabular figures (every digit the same width), so the digits in a list line up and an amount does not change width as it changes: the balance, *You pay*, receipts and their rows, list rows and the amount being typed. An amount inside a sentence (*Available 68.00 TWD*) is text. | script | review |
+| ID | Rule | Web | App | iOS |
+|---|---|---|---|---|
+| D-01 | Amounts are formatted from the API's strings and never converted to floating point: two decimals, comma thousands separators (`12,345.60`). | script | script | script |
+| D-02 | Ledger rows: credits in green with `+`, debits in the text colour with `−` (U+2212, the minus sign, read as "minus" by screen readers). | script | script | script |
+| D-03 | Times are shown in the device's time zone (the API returns UTC). Rows are grouped under *Today*, *Yesterday*, `9 Oct`, or `9 Oct 2025` in another year. | script | unit | review |
+| D-04 | The wallet ID is shown masked: first 6 characters, `••••`, last 4. Web: the full ID is in the URL. App: the full ID is in the navigation arguments; tests take it from the API response that created the wallet. | script | script | review |
+| D-05 | History is newest first. Only payment rows open a detail (whole row, with a chevron). Home shows the 3 latest entries. | script | script | script |
+| D-06 | The balance can be hidden (`••••••`); the toggle exposes its state to assistive technology (web: `aria-pressed`; app: a toggleable state description). The choice is not kept across screens. | script | script | review |
+| D-07 | Amounts shown on their own are drawn in tabular figures (every digit the same width), so the digits in a list line up and an amount does not change width as it changes: the balance, *You pay*, receipts and their rows, list rows and the amount being typed. An amount inside a sentence (*Available 68.00 TWD*) is text. | script | review | script |
 
 ### 6.5 Layout and accessibility
 
-| ID | Rule | Web | App |
-|---|---|---|---|
-| L-01 | Nothing is cut off, overlapped or needs horizontal scrolling on the screen sizes of §5, on every screen, with the longest values the API allows (a 50-character name, a balance of `999,999,999,999.99`). The balance steps down a text style by its length as shown: up to 10 characters *Display/Balance*, up to 14 *Amount/Large*, longer *Title/Large*. A currency that does not fit moves to the next line; a label wraps between words but never shrinks below its longest word; an amount is never broken. | script | script |
-| L-02 | Every interactive element meets the platform's minimum touch target (§5). | script | script |
-| L-03 | Every input has a visible label (a placeholder alone is not a label), and icon-only buttons have an accessible name. A field's error is shown under it and announced. | script; *announced*: review | review |
-| L-04 | A message that appears after an action is in view without scrolling: it is shown next to the control that caused it, and it scrolls itself into view when it appears. | script | script |
-| L-05 | Every screen, in each of its message states, passes the WCAG 2.2 level A and AA rules that axe-core checks automatically: accessible names, colour contrast, ARIA, the page's language and more. Except `target-size` (24 × 24 px), which L-02 covers with a larger minimum. | script | planned |
-| L-06 | Moving through a screen with the keyboard (Tab and Shift+Tab; Option+Tab in Safari), the focused element is never entirely hidden behind the sticky top bar or tab bar (WCAG 2.2, 2.4.11). | script | planned |
+| ID | Rule | Web | App | iOS |
+|---|---|---|---|---|
+| L-01 | Nothing is cut off, overlapped or needs horizontal scrolling on the screen sizes of §5, on every screen, with the longest values the API allows (a 50-character name, a balance of `999,999,999,999.99`). The balance steps down a text style by its length as shown: up to 10 characters *Display/Balance*, up to 14 *Amount/Large*, longer *Title/Large*. A currency that does not fit moves to the next line; a label wraps between words but never shrinks below its longest word; an amount is never broken. | script | script | planned |
+| L-02 | Every interactive element meets the platform's minimum touch target (§5). | script | script | review |
+| L-03 | Every input has a visible label (a placeholder alone is not a label), and icon-only buttons have an accessible name. A field's error is shown under it and announced. | script; *announced*: review | review | review |
+| L-04 | A message that appears after an action is in view without scrolling: it is shown next to the control that caused it, and it scrolls itself into view when it appears. | script | script | review |
+| L-05 | Every screen, in each of its message states, passes the WCAG 2.2 level A and AA rules that axe-core checks automatically: accessible names, colour contrast, ARIA, the page's language and more. Except `target-size` (24 × 24 px), which L-02 covers with a larger minimum. | script | planned | planned |
+| L-06 | Moving through a screen with the keyboard (Tab and Shift+Tab; Option+Tab in Safari), the focused element is never entirely hidden behind the sticky top bar or tab bar (WCAG 2.2, 2.4.11). | script | planned | planned |
 
 ### 6.6 Error messages
 
 Every client shows the API's `error_code` in the same plain words (web: `messages.js`; Android:
 `Messages.kt`, which `MessagesSpecParityTest` compares with this table; iOS: `Messages.swift`).
 
-| ID | API error code | Shown as | Where | Web | App |
-|---|---|---|---|---|---|
-| E-01 | `INVALID_AMOUNT` | Enter an amount like 100 or 100.50: more than 0, at most two decimals. | Confirm; under the field on Top up and Refund | script | script |
-| E-02 | `INSUFFICIENT_BALANCE` | Not enough balance for this payment. | Confirm | script | script |
-| E-03 | `LIMIT_EXCEEDED` | This is above the single-payment limit of 50,000.00. | Confirm | script | script |
-| E-04 | `REFUND_EXCEEDS_PAYMENT` | This refund would exceed what is left to refund on this payment. | Payment detail | script | script |
-| E-05 | `WALLET_NOT_FOUND` | No wallet with this ID. | Start; Home | script | script |
-| E-06 | `PAYMENT_NOT_FOUND` | No payment with this ID. | Payment detail | script | n/a: the app opens payments only from the ledger, so an unknown ID cannot be reached |
-| E-07 | `INVALID_OWNER` | Enter a name of 1 to 50 characters. | Start | script | script |
-| E-08 | `IDEMPOTENCY_KEY_REUSED` | This request conflicts with an earlier one. Start again. | Confirm, Payment detail | review: neither client reuses a key with a different body (K-03), so it cannot be reached through a client | review |
-| E-09 | any other code | Something went wrong (`<code>`). | anywhere | review | unit |
+| ID | API error code | Shown as | Where | Web | App | iOS |
+|---|---|---|---|---|---|---|
+| E-01 | `INVALID_AMOUNT` | Enter an amount like 100 or 100.50: more than 0, at most two decimals. | Confirm; under the field on Top up and Refund | script | script | script |
+| E-02 | `INSUFFICIENT_BALANCE` | Not enough balance for this payment. | Confirm | script | script | script |
+| E-03 | `LIMIT_EXCEEDED` | This is above the single-payment limit of 50,000.00. | Confirm | script | script | review |
+| E-04 | `REFUND_EXCEEDS_PAYMENT` | This refund would exceed what is left to refund on this payment. | Payment detail | script | script | script |
+| E-05 | `WALLET_NOT_FOUND` | No wallet with this ID. | Start; Home | script | script | review |
+| E-06 | `PAYMENT_NOT_FOUND` | No payment with this ID. | Payment detail | script | n/a: the app opens payments only from the ledger, so an unknown ID cannot be reached | n/a, as on Android |
+| E-07 | `INVALID_OWNER` | Enter a name of 1 to 50 characters. | Start | script | script | review |
+| E-08 | `IDEMPOTENCY_KEY_REUSED` | This request conflicts with an earlier one. Start again. | Confirm, Payment detail | review: neither client reuses a key with a different body (K-03), so it cannot be reached through a client | review | review |
+| E-09 | any other code | Something went wrong (`<code>`). | anywhere | review | unit | review |
 
 ## 7. Screens, states and test hooks
 
@@ -383,26 +382,34 @@ App-only cases:
 
 `tools/fault_check.py` requires these cases to fail under their defect, on every device profile and
 display configuration (the app cases with `--app`, since they need a device):
-`float_math` → WEB-004, APP-004; `negative_amount` → WEB-005 and APP-005 (`-1`); `no_idempotency` →
-WEB-008, APP-008, APP-015 and IOS-008 (with `--ios`); `refund_overflow` → WEB-009, APP-009. `race` and `transfer_not_atomic` have
+`float_math` → WEB-004, APP-004 and IOS-004; `negative_amount` → WEB-005 and APP-005 (`-1`; the iOS
+decimal pad has no minus sign); `no_idempotency` → WEB-008, APP-008, APP-015 and IOS-008;
+`refund_overflow` → WEB-009, APP-009 and IOS-009 (the iOS cases with `--ios`). `race` and `transfer_not_atomic` have
 no client case: one user cannot produce concurrent requests through one screen, and there is no
 transfer screen.
 
-**iOS (first stage).** Appium with the XCUITest driver, on one iOS simulator (whichever is booted; the
+**iOS.** Appium with the XCUITest driver, on one iOS simulator (whichever is booted; the
 cases were run on an iPhone 17 with iOS 26), on a Mac. The cases use the Android tests' test proxy;
 the simulator reaches it on 127.0.0.1 without forwarding. Each test starts the app fresh with the
 proxy's address and the time zone (`TZ`, Asia/Taipei) as launch settings, checks the database as well
 as the screen, and fails if the app is no longer running in the foreground. The tests need macOS and
-a simulator, so pytest collects them only with `--ios`.
+a simulator, so pytest collects them only with `--ios`. XCUITest sees the elements outside the visible
+area of a scroll view, so the iOS screen objects read a whole list at once, where the Android ones
+scroll and join.
 
 | ID | Mirrors | Steps and expected result | Rules | Proven to fail by |
 |---|---|---|---|---|
 | IOS-001 | APP-001 | Create a wallet in the app → owner, balance `0.00` and the empty state shown; one row in `wallets` | D-01 | |
-| IOS-003 | APP-003 | From 100.00, pay `30` → Confirm `30.00`, balance after `70.00` → receipt → Home: balance `70.00`, latest entry `−30.00`; one row in `payments`; one UUID v4 key, sent only on Confirm. Home's latest entries stand in for History, which the iOS app does not have yet | R-04, K-01, D-02 | |
+| IOS-002 | APP-002 | Top up `100` → receipt `100.00` / `100.00`; Home balance `100.00`; one TOPUP of 10000 cents in the ledger | R-01, D-01 | |
+| IOS-003 | APP-003 | From 100.00, pay `30` → Confirm `30.00`, balance after `70.00` → receipt → History's first row `−30.00`; one row in `payments`; one UUID v4 key, sent only on Confirm. Until 2.14, Home's latest entries stood in for History | R-04, K-01, D-02 | |
+| IOS-004 | APP-004 | Top up `19.99` → shown as `19.99`; the ledger holds 1999 cents | D-01 | `float_math` |
 | IOS-005 | APP-005 | Pay `10.555`, `1000000000000`, `99999999999999999999` (one run each; the decimal pad has no minus sign, `e` or space) → Confirm shows it as typed, with no *Balance after*; refused with E-01; nothing moves | R-02, R-04, K-04, E-01 | the 13-digit amount, on the build before 2.11: Confirm showed `1,000,000,000,000.00` |
 | IOS-006 | APP-006 | Pay more than the balance → refused with E-02; nothing charged; **Change amount** keeps the input | R-02, K-04, E-02 | |
 | IOS-008 | APP-008 | The server charges, the response is lost → *no answer* → **Retry** → receipt with `replayed`; both requests carried the same key; one row | K-03, K-06 | `no_idempotency`; by hand: the app creating a new key on every submit (§9) |
-| IOS-018 | — (iOS only) | The text styles keep their line heights (§5): on Home, the latest entries are 67 pt apart (12 + 22 + 2 + 18 + 12, and the hairline); on the payment receipt, the rows are 47 pt apart (12 + 22 + 12, and the hairline), as on the web and Android. Measured between rows, since SwiftUI reports a container's frame without its padding | §3 | the build before 2.12: 61 and 43 pt apart |
+| IOS-009 | APP-009 | Pay `30` (through the API), open it from History, refund `10` → refunded `10.00`, left `20.00`; refund `25` → E-04; refunds total 1000 cents | R-03, K-04, E-04 | `refund_overflow` |
+| IOS-010 | APP-010 | After a top-up, a payment and a refund, every History row matches the `ledger` table: order, type, amount, balance after; also with 12 entries, more than the screen holds | D-02, D-05 | |
+| IOS-014 | APP-014 | Top-up with no answer: the user is asked to check the balance; no Retry; no Idempotency-Key sent; balance unchanged | K-07 | |
+| IOS-018 | — (iOS only) | The text styles keep their line heights (§5): on Home, the latest entries are 67 pt apart (12 + 22 + 2 + 18 + 12, and the hairline); on the payment receipt, the rows are 47 pt apart (12 + 22 + 12, and the hairline), as on the web and Android. Measured between rows, since SwiftUI reports a container's frame without its padding; on Home between the rows' titles, since a payment row is a button, whose frame includes its padding (2.14) | §3 | the build before 2.12: 61 and 43 pt apart |
 | IOS-019 | WEB-017 | Amounts in tabular figures (D-07). XCUITest cannot read a font's settings, so two wallets go the same way, one with amounts made of 1s (`1,111.11`), the other of 0s (`1,000.00`): on Confirm, the receipt and Home, every amount hook D-07 covers is as wide in both, within 1 pt | D-07 | the build before 2.13: *Balance after* on Confirm and on the receipt, 43 against 62 pt |
 
 **The two clients against each other.** The cases above prove that each client meets this
@@ -414,32 +421,34 @@ spaces collapsed, as HTML displays them.
 
 ## 9. Traceability
 
-| Rule | Web | App | | Rule | Web | App |
-|---|---|---|---|---|---|---|
-| R-01 | WEB-002 | APP-002 | | N-01 | n/a | APP-016, 017 |
-| R-02 | WEB-005, 006 | APP-005, 006 | | D-01 | WEB-001, 002, 004 | APP-001, 002, 004 |
-| R-03 | WEB-009 | APP-009 | | D-02 | WEB-003, 010 | APP-003, 010 |
-| R-04 | WEB-003, 005 | APP-003, 005 | | D-03 | — | — |
-| K-01 | WEB-003 | APP-003 | | D-04 | — | — |
-| K-02 | WEB-007, 012 | APP-007, 012 | | D-05 | WEB-010 | APP-010 |
-| K-03 | WEB-008 | APP-008 | | D-06 | — | — |
-| | | | | D-07 | WEB-017 | — |
-| K-04 | WEB-005, 006, 009 | APP-005, 006, 009 | | L-01 | WEB-011 | APP-011 |
-| K-05 | WEB-013 | APP-013 | | L-02 | WEB-011 | APP-011 |
-| K-06 | WEB-008 | APP-008 | | L-03 | WEB-015 | — |
-| | | | | L-04 | WEB-011 | APP-011 |
-| | | | | L-05 | WEB-015 | — |
-| | | | | L-06 | WEB-016 | — |
-| K-07 | WEB-014 | APP-014 | | E-01, 02, 04 | WEB-005, 006, 009 | APP-005, 006, 009 |
-| K-08 | n/a | APP-015 | | E-03, 05 to 09 | — | — |
+| Rule | Web | App | iOS | | Rule | Web | App | iOS |
+|---|---|---|---|---|---|---|---|---|
+| R-01 | WEB-002 | APP-002 | IOS-002 | | N-01 | n/a | APP-016, 017 | n/a |
+| R-02 | WEB-005, 006 | APP-005, 006 | IOS-005, 006 | | D-01 | WEB-001, 002, 004 | APP-001, 002, 004 | IOS-001, 002, 004 |
+| R-03 | WEB-009 | APP-009 | IOS-009 | | D-02 | WEB-003, 010 | APP-003, 010 | IOS-003, 010 |
+| R-04 | WEB-003, 005 | APP-003, 005 | IOS-003, 005 | | D-03 | — | — | — |
+| K-01 | WEB-003 | APP-003 | IOS-003 | | D-04 | — | — | — |
+| K-02 | WEB-007, 012 | APP-007, 012 | — | | D-05 | WEB-010 | APP-010 | IOS-010 |
+| K-03 | WEB-008 | APP-008 | IOS-008 | | D-06 | — | — | — |
+| | | | | | D-07 | WEB-017 | — | IOS-019 |
+| K-04 | WEB-005, 006, 009 | APP-005, 006, 009 | IOS-005, 006, 009 | | L-01 | WEB-011 | APP-011 | — |
+| K-05 | WEB-013 | APP-013 | — | | L-02 | WEB-011 | APP-011 | — |
+| K-06 | WEB-008 | APP-008 | IOS-008 | | L-03 | WEB-015 | — | — |
+| | | | | | L-04 | WEB-011 | APP-011 | — |
+| | | | | | L-05 | WEB-015 | — | — |
+| | | | | | L-06 | WEB-016 | — | — |
+| K-07 | WEB-014 | APP-014 | IOS-014 | | E-01, 02, 04 | WEB-005, 006, 009 | APP-005, 006, 009 | IOS-005, 006, 009 |
+| K-08 | n/a | APP-015 | — | | E-03, 05 to 09 | — | — | — |
 
-**Not covered by a case yet, on either client:** D-03 (time zone and grouping), D-04 (masking), D-06
-(hiding the balance) and the remaining error messages; on the app also L-03, L-05, L-06 and D-07. On the web they were checked once by
-script (§6), but nothing checks them on every change. None of them can move money.
+**Not covered by a case yet, on any client:** D-03 (time zone and grouping), D-04 (masking), D-06
+(hiding the balance) and the remaining error messages; on the Android app also L-03, L-05, L-06 and
+D-07, on the iOS app the rules in the next paragraph. On the web they were checked once by script
+(§6), but nothing checks them on every change. None of them can move money.
 
-**iOS.** IOS-001, 003, 005, 006 and 008 cover R-02, R-04, K-01, K-03, K-04, K-06, D-01, D-02, E-01 and E-02 on the
-iOS app (§8), IOS-018 the text styles' line heights (§3) and IOS-019 D-07; every other rule is still planned
-there.
+**iOS.** The iOS column follows the Android column where an IOS case mirrors an APP case. No IOS case
+yet for K-02, K-05 (APP-007, 012, 013), K-08 (APP-015, not implemented on iOS), L-01 to L-04
+(APP-011) or E-03; the iOS app meets those rules by reading its code (§6), except K-08 and L-01.
+IOS-018 checks the text styles' line heights (§3).
 
 **Rules that live only in the client.** WEB-007, 012 to 017 and APP-007, 012, 013, 014, 016, 017 test
 rules that live in the client (the in-flight guard, the disabled button, the pending attempt, the
@@ -489,13 +498,13 @@ say the payment had already gone through.
 - **No transfer screen.** Transfers are tested at the API level only.
 - **Safari's engine, not Safari.** The iPhone profile runs in Playwright's Linux build of WebKit,
   the engine Safari uses, not in Safari on an iPhone.
-- **The iOS app is at its first stage.** Start, Home and Pay only: no History, Top up or Payment
-  detail. A pending attempt does not survive iOS ending the app in the background (K-08). D-03 to
-  D-06 and L-01 to L-06 are not checked by a case on iOS; the cases run on one simulator size, on a
-  Mac, not in CI and not on a physical iPhone. Icons are SF Symbols, not the Figma icons. The app has
-  no unit tests yet, and nothing compares its design tokens with `tokens.css` on every change. Its
-  decimal pad shows the region's decimal separator: in a region that writes a comma, a dot cannot be
-  typed, and an amount with a comma is refused (E-01). Not tried on a simulator set to such a region yet.
+- **The iOS app: no K-08 yet, and a simulator only.** A pending attempt does not survive iOS ending
+  the app in the background (K-08). The cases run on one simulator size, on a Mac, not in CI and not
+  on a physical iPhone. K-02, K-05, D-03, D-04, D-06, L-01 to L-06 and E-03 have no iOS case yet
+  (§9). Icons are SF Symbols, not the Figma icons. The app has no unit tests yet, and nothing compares
+  its design tokens with `tokens.css` on every change. Its decimal pad shows the region's decimal
+  separator: in a region that writes a comma, a dot cannot be typed, and an amount with a comma is
+  refused (E-01). Not tried on a simulator set to such a region yet.
 - **The shared layout (§7.7) was checked by measurement, not by a case.** For 2.13 every hook's
   position and size was measured on the three clients at the same width and compared. Apart from
   IOS-018's row heights, no case would notice one client drifting from §7.7 on its own.
@@ -520,6 +529,7 @@ say the payment had already gone through.
 
 | Version | Change |
 |---|---|
+| 2.14 | **The iOS app has every screen.** Its second stage adds the tab bar (Home and History), History grouped by day (D-03, D-05), Top up (one step, no key, no Retry after no answer: K-07), Payment detail with refunds (left to refund in integer cents, R-03; Retry with the same key, K-05; the form brought into view when its state changes, L-04), payment rows that open their detail with a chevron, and *View payment* on the payment receipt. Payment detail goes back to History wherever it was opened from, as on the web and Android. The amount field gains its Error state, the top-up and payment receipts share one view, and the attempt takes no key for top-ups. Five cases mirror the Android cases of the same numbers: IOS-002, 004, 009, 010 and 014; IOS-003 now ends in History, as APP-003 does. `tools/fault_check.py --ios-only` requires IOS-004 to fail under `float_math` and IOS-009 under `refund_overflow`; both do. §6 and §9 gain an iOS column. Found while building: (1) **a payment row's button lost its hook**: made an accessibility container so that its texts stay separate elements, the button reported an identifier built from its children's (`item-title-item-amount-item-balance`) instead of `open-payment`; a SwiftUI button keeps its children as elements without it. (2) **IOS-018 measured the wrong thing** once a row could be a button: SwiftUI reports a button's frame with its padding and a plain row's without, so a payment row and the top-up under it were 81 pt apart in frames for a 67 pt row. It now measures the rows' titles. (3) Home's load error read *No answer from the server. Try again.*; it now reads *No answer from the server.*, as on the web and Android (Start keeps *Try again*). (4) VoiceOver read the tab icons as elements of their own (the paper plane as *Send*); the tab is now named by its label only. Checked: the iOS app's 15 runs three times in a row, `fault_check.py --ios-only` (three defects caught), and a walkthrough of every way between the screens (27 checks, among them Payment detail back to History from Home, History and the receipt, a refund with no answer retried with the same key, and the refund messages in view). The README's screenshots gain iOS History and Payment detail. The web and the Android app are unchanged. |
 | 2.13 | **One layout for the three clients, and this document written for three.** The measurement of 2.11, extended to History, Top up and Payment detail, left seven small layout differences. The Figma file has no screens (§3), so each was decided by the intent written in the code, then consistency within a client, then the majority, and the result is written down as §7.7. (1) The web pinned *Use another wallet* to the bottom of Home (678 px under the top bar, against 556 in the apps); it now follows Recent activity. (2) The web's hide-balance button was drawn in the text colour: its rule named `.balance-row`, but the button sits in `.balance-head`. It is now `color/icon/muted`, as in the apps. (3) On the web, an empty live region took its container's gap: 12 px under each Start form, and 16 px more between the refund field and its button. While empty, it is now out of the layout but still in the accessibility tree. (4) In the apps' summary cards (Confirm, Payment detail), the card's 4 dp spacing sat on each side of every hairline, and the last row kept its 12 dp of bottom padding: the cards were 20 and 28 dp taller than the web's. They now follow the web. (5) The web's receipt heading sat 8 px lower than the first block of any other screen. (6) The apps left 16 under their bottom actions, the web 24; the apps now leave 24. (7) iOS's top bar had 4 pt at the sides, where the web has 8 for the same 44 target; it now has 8. Measured again, the three clients are within 4 of each other on every screen they share. What is left comes from the web's cards, which count their 1 px border inside their size, and from SwiftUI's frames, which leave out padding. Also: the iOS receipt rows' values are Body/Strong in tabular figures, as on the web and Android (D-07). IOS-019 compares amounts made of 1s with the same amounts made of 0s; on the build before, *Balance after* was 43 pt wide against 62. And this document now describes three clients throughout: §1, the architecture (§2), the tokens and components (§3, where the Android app was still *planned*), the screens with an iOS column (§4), §6.2, §6.6 and §8. Checked: the web's 75 runs in three engines, and its seven mutations, which are all still caught: WEB-016, which first found the missing scroll padding through the pinned link, still catches it. The Android app's 58 runs, the iOS app's 9 runs three times in a row, and `parity_check.py` (44 inputs, 0 different). |
 | 2.12 | **The iOS app's text styles keep their line heights.** Found by the three-client measurement of 2.11: every line of text on iOS was only as high as Inter itself (18 pt for Body instead of 22, 16 for Caption instead of 18), so a ledger row was 61 pt instead of 67, a receipt row 43 instead of 47, and every screen sat tighter than on the web and Android. SwiftUI has no line height; the app had set the difference as line spacing, which goes only between lines. Half of it now also goes above and below the text, as CSS and Compose place it, scaled with Dynamic Type (§5). Measured again at the same width, the iOS screens are within 3 pt of Android's; the rest comes from Android's larger touch target (48 dp against 44 pt) and from SwiftUI's frames, which leave out the padding. IOS-018 measures two kinds of row; it failed on the build before. The screenshots in the README were taken again for all three clients (the web's also show 2.11's tabular figures). |
 | 2.11 | **Two defects found by comparing the three clients** on the same screens at the same width, with every hook's position and size measured. (1) **The clients' *plain* grammar had no 12-digit limit**, which the API's has: an amount of 13 or more digits was converted for Confirm although the API refuses it. Each client then broke in its own way: the **Android app crashed** on Confirm with a 20-digit amount (`NumberFormatException`: the cents overflowed a `Long`); the **web showed a different number** past 2^53, computed in floating point (`9007199254740993` as `9,007,199,254,740,992.00`, 20 nines as `100,000,000,000,000,000,000.00`); the iOS app converted them while the cents fit its 64-bit integer and showed longer ones as typed. All three now use the API's grammar (R-04), so an amount they convert always fits their integers, and a longer one is shown as typed. WEB-005 and APP-005 gain a 13-digit and a 20-digit input, IOS-005 is new, and `tools/parity_check.py` sends 12, 13 and 20 digits through both clients. No money could move: the API refused them all. (2) **The web lost its tabular figures in the build** (D-07, new): Vite's CSS minifier moved `font-variant-numeric: tabular-nums` before the `font` shorthand in the same rule, and the shorthand reset it; separately, the text style on a list row's amount reset the tabular figures the row passes down. Amounts were drawn in proportional figures (the receipt's `120.00` 7 px narrower than in the apps), so the digits in History did not line up. The development server does not minify, so the page looked right there. The text styles are now longhands, never the shorthand. WEB-017 measures the drawn digits; it failed in all three engines before the fix. Android's token test reads the longhand text styles. |
