@@ -103,9 +103,12 @@ private fun RowScope.TransactionContent(title: String, time: String, amount: Str
 /**
  * Figma: Receipt row. Label left, value right. A hook on an amount wraps the number only, never the
  * currency (SPEC §7): pass the number as [value] and the currency as [suffix].
+ *
+ * [last]: the last row of a summary card (Confirm, Payment detail) has no padding under it; the card's
+ * own padding ends it, as on the web (`.card-tight .receipt-row:last-child`, SPEC §7.7).
  */
 @Composable
-fun ReceiptRow(label: String, value: String, valueTestTag: String? = null, suffix: String? = null) {
+fun ReceiptRow(label: String, value: String, valueTestTag: String? = null, suffix: String? = null, last: Boolean = false) {
     // The web's flex layout: the value keeps its width when it can, the label takes the rest and wraps
     // between words, but never narrower than its longest word. Compose has no such floor: with the label
     // simply weighted, a 50-character name crushed "From" to one letter per line, over the name (QA pass).
@@ -115,7 +118,8 @@ fun ReceiptRow(label: String, value: String, valueTestTag: String? = null, suffi
     }
     // Hook "receipt-row": a test can check that the row shows both its label and its value. A label crushed
     // to zero width disappears from the accessibility tree, so without the row there is nothing to measure.
-    BoxWithConstraints(Modifier.fillMaxWidth().testTag("receipt-row").padding(vertical = WalletSpacing.md)) {
+    val bottom = if (last) 0.dp else WalletSpacing.md
+    BoxWithConstraints(Modifier.fillMaxWidth().testTag("receipt-row").padding(top = WalletSpacing.md, bottom = bottom)) {
         val valueMax = maxWidth - labelFloor - WalletSpacing.lg
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(WalletSpacing.lg)) {
             Text(label, style = WalletType.body, color = WalletColors.textSecondary, modifier = Modifier.weight(1f))

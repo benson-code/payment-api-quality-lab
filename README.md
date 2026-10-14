@@ -14,7 +14,7 @@ in the same pytest suite: 17 cases in three browser engines (Chromium, WebKit, F
 against the database as well as the page. A native **Android app** (Kotlin, Jetpack Compose) has the
 same screens and rules, and **Appium** tests it in the same suite, through a test proxy that can hold
 a request or lose its response. A native **iOS app** (SwiftUI) is at its first stage: Start, Home and
-Pay, with six Appium (XCUITest) cases on the iOS simulator, run on a Mac and not yet in CI.
+Pay, with seven Appium (XCUITest) cases on the iOS simulator, run on a Mac and not yet in CI.
 
 The main flows are also provided as a **Postman collection** for manual use, run by **Newman** in CI.
 A **k6** load test, followed by a database reconciliation, can be triggered on demand.
@@ -82,7 +82,7 @@ payment-api-quality-lab/
 │   ├── schema.py              Validation that reports every mismatching field
 │   ├── factories.py           Factory functions for wallets and payments
 │   ├── cases.py               CSV loader; case_id, marks and is_run live in the data
-│   └── messages.py            Expected error texts for both clients, copied from SPEC.md
+│   └── messages.py            Expected error texts for every client, copied from SPEC.md
 ├── cases/
 │   └── amount_validation.csv  Amount-format cases (34, one per row)
 ├── tests/                     (3) Test case layer
@@ -383,7 +383,7 @@ absent from every element list, so no check of element bounds could find them. T
 hooks (`receipt-row`, `balance-row`), and APP-011 requires every part of every row to be visible; the
 web applies the same rule.
 
-**Both clients side by side.** `tools/parity_check.py` sends the same 44 inputs (payment, top-up and
+**The web and the Android app side by side.** `tools/parity_check.py` sends the same 44 inputs (payment, top-up and
 refund amounts, valid and invalid) through the page and through the app, each from a fresh wallet,
 and compares what each showed (whether the button was enabled, Confirm's amount and balance after,
 the receipt or the message) and what the server did. Its first version, run during the QA pass,
@@ -459,6 +459,7 @@ the Android and web cases with the same number (IOS-008 tests what APP-008 and W
 | IOS-006 | A payment above the balance is refused; *Change amount* keeps the input | |
 | IOS-008 | The server charges, the response is lost, the user retries: same key, "already gone through", one payment | `no_idempotency`; by hand: the app sending a new key on Retry |
 | IOS-018 | The text styles keep their line heights: ledger rows 67 pt apart and receipt rows 47, as on the web and Android | the build before 2.12 (61 and 43) |
+| IOS-019 | Amounts are in tabular figures: amounts made of 1s are as wide as the same amounts made of 0s, on Confirm, the receipt and Home | the build before 2.13 (*Balance after*, 43 against 62 pt) |
 
 **Running** (macOS with Xcode 26 or later, Appium 3 with the xcuitest driver):
 
@@ -468,13 +469,14 @@ xcodebuild -project ios/Wallet.xcodeproj -scheme Wallet -configuration Debug \
     -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/build build
 xcrun simctl boot "iPhone 17"                    # any iPhone simulator: one booted, or choose with IOS_UDID
 appium --address 127.0.0.1 --port 4723           # another terminal (appium driver install xcuitest, once)
-.venv/bin/pytest tests/ios --ios                 # 6 cases in 8 runs, about 55 seconds
+.venv/bin/pytest tests/ios --ios                 # 7 cases in 9 runs, about 70 seconds
 .venv/bin/python tools/fault_check.py --ios-only # planted defects, iOS cases only
 ```
 
 On an iPhone 17 simulator (iOS 26, Xcode 27) the four cases passed three runs in a row, about 27
-seconds each; with IOS-005 and IOS-018 (versions 2.11 and 2.12), the 8 runs passed three times in
-a row, about 54 seconds each. The first session on a machine also builds WebDriverAgent, which takes a few minutes once.
+seconds each; with IOS-005, 018 and 019 (versions 2.11 to 2.13), the 9 runs passed three times in a
+row, about 69 seconds each. The first session on a machine also builds WebDriverAgent, which takes a
+few minutes once.
 Like the Android tests, they are collected only with `--ios`; with `--ios` but no simulator, Appium
 server or app build, every test fails and says what is missing.
 
@@ -698,5 +700,6 @@ Each of these is recorded in the commit history.
 | Keyboard focus could land entirely behind a sticky bar: on a 360 × 640 screen, Tab to *Use another wallet* on Home left it behind the tab bar and Shift+Tab left the balance toggle behind the top bar (Chromium, WebKit); in Firefox, a History row ended behind the tab bar | Checking axe's report that the same link was too small (`target-size`, WebKit only). That report depended on the scroll position at the time of the scan; the focus problem was real | The page sets scroll padding for its sticky top bar and tab bar, and WEB-016 tabs through every screen. axe's `target-size` is left to WEB-011, which requires 44 × 44 px |
 | A 20-digit amount crashed the Android app on Confirm; the web showed a different number from 2^53 up (`9007199254740993` as `…992.00`) | Comparing the three clients' code and screens side by side: the iOS app, written last, guarded its cents against overflow, and the other two did not. Reproduced on the emulator: `NumberFormatException` in `Money.toCents` | The API takes at most 12 digits before the point, and the clients' *plain* grammar had no such limit. All three now use the API's grammar exactly, so an amount they convert always fits, and a longer one is shown as typed (SPEC R-04). WEB-005, APP-005 and IOS-005 send 13 and 20 digits |
 | Every row of text on iOS was shorter than on the web and Android: a ledger row 61 pt instead of 67, a receipt row 43 instead of 47 | The same comparison: positions on iOS drifted upward screen by screen | SwiftUI has no line height. The app set the difference from Inter's own as line spacing, which goes only between lines, so one line of Body was 18 pt high instead of 22. Half of it now also goes above and below the text, as CSS and Compose do. IOS-018 measures the distance between rows and failed before the fix |
+| Seven small layout differences between the clients, such as *Use another wallet* pinned to the bottom of Home on the web only, the web's hide-balance icon darker than the apps', and the apps' summary cards up to 28 dp taller than the web's | The same measurement, extended to every screen the web and Android share | Figma has no screen frames, so each was decided by the intent written in the code, then consistency within a client, then the majority, and written down as SPEC §7.7. The iOS receipt values became Body/Strong in tabular figures (IOS-019). SPEC §11, 2.13 lists all seven |
 | On the web, amounts were not in tabular figures: the digits in History did not line up, and the receipt's `120.00` was 7 px narrower than in the apps | The same comparison, measuring every hook at the same width. The CSS said `tabular-nums`, and the development server showed it | Vite's CSS minifier moved `font-variant-numeric` before the `font` shorthand in the same rule, and the shorthand reset it; a list row's text style also reset what the row passed down. The text styles are now longhands. WEB-017 measures the drawn digits and failed in all three engines before the fix |
 | With the amount field's label detached, leaving only the placeholder `0.00`, the axe scan still passed | The mutation check for WEB-015: the mutant survived in all three engines | axe counts a placeholder as a field's name; a placeholder disappears as soon as the user types. WEB-015 now also requires every input to be tied to a visible `<label>` |

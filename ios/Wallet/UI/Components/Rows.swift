@@ -63,12 +63,16 @@ struct TransactionRow: View {
 
 /// Figma: Receipt row. Label left, value right. A hook on an amount wraps the number only, never the
 /// currency (SPEC §7): pass the number as `value` and the currency as `suffix`. Hook "receipt-row" on
-/// the whole row, as on the web and Android.
+/// the whole row, as on the web and Android. The value is Body/Strong in tabular figures (D-07), as on
+/// the web and Android; until 2.13 it was Body/Regular in proportional figures.
+/// `last`: the last row of a summary card (Confirm) has no padding under it; the card's own padding
+/// ends it, as on the web (SPEC §7.7).
 struct ReceiptRow: View {
     let label: String
     let value: String
     var valueTestTag: String?
     var suffix: String?
+    var last = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: WalletSpacing.lg) {
@@ -76,16 +80,17 @@ struct ReceiptRow: View {
             Spacer(minLength: 0)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(value)
-                    .walletText(WalletType.body)
+                    .walletText(WalletType.bodyStrongTabular)
                     .foregroundStyle(WalletColors.textPrimary)
                     .multilineTextAlignment(.trailing)
                     .accessibilityIdentifier(valueTestTag ?? "")
                 if let suffix {
-                    Text(suffix).walletText(WalletType.body).foregroundStyle(WalletColors.textPrimary)
+                    Text(suffix).walletText(WalletType.bodyStrong).foregroundStyle(WalletColors.textPrimary)
                 }
             }
         }
-        .padding(.vertical, WalletSpacing.md)
+        .padding(.top, WalletSpacing.md)
+        .padding(.bottom, last ? 0 : WalletSpacing.md)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("receipt-row")
     }

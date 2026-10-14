@@ -106,12 +106,15 @@ fun PaymentDetailScreen(vm: PaymentDetailViewModel, formats: Formats, onBack: ()
                         modifier = Modifier.testTag("payment-amount"))
                     Text(" TWD", style = WalletType.amountLarge, color = WalletColors.textPrimary)
                 }
-                ReceiptRow("Refunded", Money.display(p.refunded), valueTestTag = "payment-refunded")
-                RowDivider()
-                ReceiptRow("Left to refund", Money.display(Money.fromCents(Money.toCents(p.amount) - Money.toCents(p.refunded))),
-                    valueTestTag = "payment-refundable")
-                RowDivider()
-                ReceiptRow("Payment ID", p.paymentId)
+                // The rows touch, with a hairline between them, and the last one ends the card (SPEC §7.7)
+                Column {
+                    ReceiptRow("Refunded", Money.display(p.refunded), valueTestTag = "payment-refunded")
+                    RowDivider()
+                    ReceiptRow("Left to refund", Money.display(Money.fromCents(Money.toCents(p.amount) - Money.toCents(p.refunded))),
+                        valueTestTag = "payment-refundable")
+                    RowDivider()
+                    ReceiptRow("Payment ID", p.paymentId, last = true)
+                }
             }
             if (p.refunds.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(WalletSpacing.sm)) {

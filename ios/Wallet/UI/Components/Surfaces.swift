@@ -51,6 +51,7 @@ struct Message: View {
 
 /// Figma: Top bar (Back = True | False). 56 pt, title centred. With `onBack` it shows a back button
 /// (hook "back"), a 44 pt touch target; `backEnabled` = false while a request is in flight (K-02).
+/// 8 pt at the sides, as on the web: the back icon's centre is 30 pt from the edge (SPEC §7.7).
 struct TopBar: View {
     let title: String
     var onBack: (() -> Void)?
@@ -71,13 +72,14 @@ struct TopBar: View {
                 .accessibilityAddTraits(.isHeader)
             Color.clear.frame(width: minTouchTarget, height: minTouchTarget)
         }
-        .padding(.horizontal, WalletSpacing.xs)
+        .padding(.horizontal, WalletSpacing.sm)
         .frame(height: 56)
     }
 }
 
 /// A screen: top bar, scrollable content, then the screen's own bottom actions, which stay above the
-/// keyboard. The same padding as the web's `.content`: 16 top, 20 sides, 16 between blocks.
+/// keyboard. The same padding as the web's `.content`: 16 top, 20 sides, 16 between blocks, 24 at the
+/// end, also under the bottom actions (SPEC §7.7).
 struct Screen<Content: View, Bottom: View>: View {
     let title: String
     var onBack: (() -> Void)?
@@ -97,7 +99,7 @@ struct Screen<Content: View, Bottom: View>: View {
             .scrollDismissesKeyboard(.interactively)
             VStack(spacing: WalletSpacing.sm) { bottom }
                 .padding(.horizontal, WalletSpacing.xl)
-                .padding(.bottom, WalletSpacing.lg)
+                .padding(.bottom, WalletSpacing.xxl)
         }
         .background(WalletColors.bgPage)
     }
