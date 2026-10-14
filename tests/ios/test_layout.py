@@ -5,7 +5,9 @@ Compose 一樣。原本只補了行距，單行文字只有字型本身的高度
 每一列都比網頁和 Android 矮，整個畫面擠在一起：2.11 版三端並排量測時發現。
 
 量的是相鄰兩列的距離，不是元素的外框：SwiftUI 回報的容器外框只包住裡面的文字、不含 padding，
-兩列之間的距離才是一列真正的高度。期望值由設計的數字算出來，網頁和 Android 量起來也是這兩個數。
+兩列之間的距離才是一列真正的高度。交易紀錄量的是每一列標題的位置，不是列本身：可以點開的付款列是
+按鈕，按鈕的外框含 padding，一般的列不含，兩種列混在一起時，列的外框之間的距離不等於列高（2.14）。
+期望值由設計的數字算出來，網頁和 Android 量起來也是這兩個數。
 """
 import pytest
 
@@ -32,8 +34,8 @@ def test_text_styles_keep_their_line_heights(app, api):
     api.pay(wallet, "20.00")
 
     home = app.open_wallet(wallet)
-    home.recent_rows()                                       # 等最近三筆載入
-    rows = home.frames("recent-item")
+    home.recent_rows()                                       # 等最近三筆載入：兩筆付款（按鈕）、一筆儲值
+    rows = home.frames("item-title")
     assert len(rows) == 3, rows
     home_pitches = pitches(rows)
 

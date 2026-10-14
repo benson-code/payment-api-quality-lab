@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Figma: Section header. Groups rows ("Recent activity").
+/// Figma: Section header. Groups rows ("Recent activity", "Today", "9 Oct").
 struct SectionHeader: View {
     let text: String
 
@@ -20,20 +20,43 @@ struct RowDivider: View {
     }
 }
 
-/// Figma: Transaction row (Direction = Credit | Debit). Credit amounts in green with "+", debit
-/// amounts in the text colour with "−" (SPEC D-02). The row carries `testTag`; the title, amount and
-/// balance keep their own hooks ("item-title", "item-amount", "item-balance").
-/// No chevron yet: this app has no payment detail screen.
+/// Figma: Transaction row (Direction = Credit | Debit; Show chevron). Credit amounts in green with "+",
+/// debit amounts in the text colour with "−" (SPEC D-02). The row carries `testTag`; the title, amount
+/// and balance keep their own hooks ("item-title", "item-amount", "item-balance").
+///
+/// With `onOpen` (payments, D-05) the whole row is one button, hook "open-payment", with a chevron. As on
+/// the web and Android the row and its button are two levels; the button's texts stay elements of their
+/// own, with their hooks. The chevron is named "Open payment" for VoiceOver.
 struct TransactionRow: View {
     let title: String
     let time: String
     let amount: String
     let balanceAfter: String?
     let testTag: String
+    var onOpen: (() -> Void)?
 
     var body: some View {
+        // A stack of its own around the button: two views, so two elements, each with its hook
+        VStack(spacing: 0) {
+            if let onOpen {
+                Button(action: onOpen) {
+                    content.contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                // No accessibilityElement(children: .contain) here: on a button it replaced this hook
+                // with one made of the children's ("item-title-item-amount-item-balance")
+                .accessibilityIdentifier("open-payment")
+            } else {
+                content
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(testTag)
+    }
+
+    private var content: some View {
         let credit = !amount.hasPrefix("-")
-        HStack(spacing: WalletSpacing.md) {
+        return HStack(spacing: WalletSpacing.md) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).walletText(WalletType.bodyStrong).foregroundStyle(WalletColors.textPrimary)
                     .accessibilityIdentifier("item-title")
@@ -54,10 +77,36 @@ struct TransactionRow: View {
                     .foregroundStyle(WalletColors.textSecondary)
                 }
             }
+            if onOpen != nil {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(WalletColors.iconMuted)
+                    .frame(width: 24, height: 24)
+                    .accessibilityLabel("Open payment")
+                    .accessibilityAddTraits(.isButton)
+            }
         }
         .padding(.vertical, WalletSpacing.md)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(testTag)
+    }
+}
+
+/// Ledger entries in a list card, newest first, separated by hairlines. Payment rows open their
+/// detail (D-05). Home shows the latest three, History every entry of a day.
+struct EntryList: View {
+    let entries: [Entry]
+    let rowTag: String
+    let onOpenPayment: (_ paymentId: String) -> Void
+
+    var body: some View {
+        WalletCard(spacing: 0, padding: EdgeInsets(top: WalletSpacing.xs, leading: WalletSpacing.lg,
+                                                   bottom: WalletSpacing.xs, trailing: WalletSpacing.lg)) {
+            ForEach(Array(entries.enumerated()), id: \.element.entryId) { i, e in
+                if i > 0 { RowDivider() }
+                let open: (() -> Void)? = if e.type == "PAYMENT", let id = e.refId { { onOpenPayment(id) } } else { nil }
+                TransactionRow(title: Formats.typeLabel(e.type), time: Formats.time(e.createdAt),
+                               amount: e.amount, balanceAfter: e.balanceAfter, testTag: rowTag, onOpen: open)
+            }
+        }
     }
 }
 

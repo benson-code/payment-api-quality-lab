@@ -77,36 +77,51 @@ struct TopBar: View {
     }
 }
 
-/// A screen: top bar, scrollable content, then the screen's own bottom actions, which stay above the
-/// keyboard. The same padding as the web's `.content`: 16 top, 20 sides, 16 between blocks, 24 at the
-/// end, also under the bottom actions (SPEC §7.7).
+/// A screen: top bar, scrollable content, then either a tab bar (Home, History) or the screen's own
+/// bottom actions, which stay above the keyboard. The same padding as the web's `.content`: 16 top,
+/// 20 sides, 16 between blocks, 24 at the end, also under the bottom actions (SPEC §7.7).
+///
+/// The content can scroll a part of itself into view through `scrollProxy` in the environment (L-04).
 struct Screen<Content: View, Bottom: View>: View {
     let title: String
     var onBack: (() -> Void)?
     var backEnabled = true
+    var tabBar: TabBar?
     @ViewBuilder let bottom: Bottom
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(spacing: 0) {
             TopBar(title: title, onBack: onBack, backEnabled: backEnabled)
-            ScrollView {
-                VStack(alignment: .leading, spacing: WalletSpacing.lg) { content }
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: WalletSpacing.lg) { content }
+                        .padding(.horizontal, WalletSpacing.xl)
+                        .padding(.top, WalletSpacing.lg)
+                        .padding(.bottom, WalletSpacing.xxl)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .environment(\.scrollProxy, proxy)
+            }
+            if !(bottom is EmptyView) {
+                VStack(spacing: WalletSpacing.sm) { bottom }
                     .padding(.horizontal, WalletSpacing.xl)
-                    .padding(.top, WalletSpacing.lg)
                     .padding(.bottom, WalletSpacing.xxl)
             }
-            .scrollDismissesKeyboard(.interactively)
-            VStack(spacing: WalletSpacing.sm) { bottom }
-                .padding(.horizontal, WalletSpacing.xl)
-                .padding(.bottom, WalletSpacing.xxl)
+            if let tabBar { tabBar }
         }
         .background(WalletColors.bgPage)
     }
 }
 
 extension Screen where Bottom == EmptyView {
-    init(title: String, onBack: (() -> Void)? = nil, backEnabled: Bool = true, @ViewBuilder content: () -> Content) {
-        self.init(title: title, onBack: onBack, backEnabled: backEnabled, bottom: { EmptyView() }, content: content)
+    init(title: String, onBack: (() -> Void)? = nil, backEnabled: Bool = true, tabBar: TabBar? = nil,
+         @ViewBuilder content: () -> Content) {
+        self.init(title: title, onBack: onBack, backEnabled: backEnabled, tabBar: tabBar, bottom: { EmptyView() }, content: content)
     }
+}
+
+extension EnvironmentValues {
+    /// The screen's scroll view, for content that must bring a part of itself into view (L-04).
+    @Entry var scrollProxy: ScrollViewProxy?
 }

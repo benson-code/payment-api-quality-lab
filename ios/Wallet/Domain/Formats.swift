@@ -18,6 +18,7 @@ enum Formats {
     }
 
     private static let clock = formatter("HH:mm")
+    private static let day = formatter("d MMM")
     private static let dayYear = formatter("d MMM yyyy")
 
     private static func date(_ iso: String) -> Date? { Self.iso.date(from: iso) }
@@ -30,6 +31,33 @@ enum Formats {
     /// "10 Oct 2026, 14:31"
     static func dateTime(_ iso: String) -> String {
         date(iso).map { dayYear.string(from: $0) + ", " + clock.string(from: $0) } ?? iso
+    }
+
+    /// The heading a row is grouped under: "Today", "Yesterday", "9 Oct", or "9 Oct 2025" in another
+    /// year, by the device's calendar and time zone. `now` decides "today".
+    static func dayLabel(_ iso: String, now: Date = Date()) -> String {
+        guard let d = date(iso) else { return iso }
+        let calendar = Calendar.current
+        if calendar.isDate(d, inSameDayAs: now) { return "Today" }
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: now), calendar.isDate(d, inSameDayAs: yesterday) {
+            return "Yesterday"
+        }
+        return calendar.component(.year, from: d) == calendar.component(.year, from: now)
+            ? day.string(from: d) : dayYear.string(from: d)
+    }
+
+    /// Items grouped by day, keeping their order.
+    static func groupByDay<T>(_ items: [T], now: Date = Date(), createdAt: (T) -> String) -> [(label: String, items: [T])] {
+        var groups: [(label: String, items: [T])] = []
+        for item in items {
+            let label = dayLabel(createdAt(item), now: now)
+            if let last = groups.last, last.label == label {
+                groups[groups.count - 1].items.append(item)
+            } else {
+                groups.append((label, [item]))
+            }
+        }
+        return groups
     }
 
     /// "w_beeb1c2d3e4f4385" -> "w_beeb •••• 4385", as banking apps show account numbers (SPEC D-04).

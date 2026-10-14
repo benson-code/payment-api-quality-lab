@@ -1,10 +1,24 @@
-"""IOS-005、006：API 不接受的金額、餘額不足，和 Android 的 APP-005、006、網頁的 WEB-005、006 是同一組行為。"""
+"""IOS-004 到 006：金額的精度、API 不接受的金額、餘額不足，和 Android 的 APP-004 到 006、網頁的 WEB-004 到 006
+是同一組行為。"""
 import pytest
 
 from testdata.factories import funded_wallet
 from testdata.messages import ERROR_TEXT
 
 pytestmark = pytest.mark.ios
+
+
+@pytest.mark.precision
+@pytest.mark.case_id("IOS-004")
+def test_top_up_19_99_keeps_every_cent(app, api, db):
+    """19.99 用浮點數乘 100 是 1998.9999…，取整數就少一分（埋 bug：float_math）。"""
+    wallet = funded_wallet(api, "0.00")
+
+    receipt = app.open_wallet(wallet).go_top_up().top_up("19.99")
+
+    receipt.expect_text("result-amount", "19.99")
+    receipt.expect_text("result-balance", "19.99")
+    assert db.balance_cents(wallet) == 1999
 
 
 @pytest.mark.validation

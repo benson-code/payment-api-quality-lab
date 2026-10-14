@@ -15,7 +15,12 @@ nonisolated enum Messages {
     static func forCode(_ code: String) -> String { byCode[code] ?? "Something went wrong (\(code))." }
 
     static let noAnswerTryAgain = "No answer from the server. Try again."
+    static let noAnswer = "No answer from the server."
     static let payNoAnswer =
         "No answer from the server. The payment may or may not have gone through. Retrying is safe: it cannot charge twice."
+    static let refundNoAnswer =
+        "No answer from the server. The refund may or may not have gone through. Retrying is safe: it cannot refund twice."
     static let replayed = "This payment had already gone through. You were not charged again."
+    static let topUpNoAnswer =
+        "No answer from the server: the top-up may or may not have gone through. Check the balance before trying again."
 }

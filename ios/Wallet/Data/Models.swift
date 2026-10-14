@@ -56,17 +56,51 @@ nonisolated struct Entry: Equatable {
     }
 }
 
-/// A payment. `balanceAfter` is only in the answer to the payment itself.
+/// The answer to a top-up.
+nonisolated struct TopUp: Equatable {
+    let amount: String
+    let balance: String
+
+    static func from(_ j: JSON) throws -> TopUp {
+        TopUp(amount: try j.string("amount"), balance: try j.string("balance"))
+    }
+}
+
+/// A payment and its refunds. `balanceAfter` is only in the answer to the payment itself, `refunds`
+/// only in the answer to GET /payments/{id}.
 nonisolated struct Payment: Equatable {
     let paymentId: String
     let walletId: String
     let amount: String
+    let refunded: String
     let createdAt: String
     let balanceAfter: String?
+    let refunds: [Refund]
 
     static func from(_ j: JSON) throws -> Payment {
         Payment(paymentId: try j.string("payment_id"), walletId: try j.string("wallet_id"),
-                amount: try j.string("amount"), createdAt: try j.string("created_at"),
-                balanceAfter: j["balance_after"] as? String)
+                amount: try j.string("amount"), refunded: try j.string("refunded"),
+                createdAt: try j.string("created_at"), balanceAfter: j["balance_after"] as? String,
+                refunds: try (j["refunds"] as? [JSON] ?? []).map(Refund.from))
+    }
+}
+
+nonisolated struct Refund: Equatable {
+    let refundId: String
+    let amount: String
+    let createdAt: String
+
+    static func from(_ j: JSON) throws -> Refund {
+        Refund(refundId: try j.string("refund_id"), amount: try j.string("amount"), createdAt: try j.string("created_at"))
+    }
+}
+
+/// The answer to a refund.
+nonisolated struct RefundResult: Equatable {
+    let amount: String
+    let balanceAfter: String
+
+    static func from(_ j: JSON) throws -> RefundResult {
+        RefundResult(amount: try j.string("amount"), balanceAfter: try j.string("balance_after"))
     }
 }

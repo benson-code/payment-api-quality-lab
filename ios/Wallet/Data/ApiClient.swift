@@ -26,6 +26,10 @@ final class ApiClient {
         await request("GET", "/wallets/\(seg(walletId))", parse: Wallet.from)
     }
 
+    func topUp(_ walletId: String, _ amount: String) async -> ApiResult<TopUp> {
+        await request("POST", "/wallets/\(seg(walletId))/topups", body: ["amount": amount], parse: TopUp.from)
+    }
+
     /// The ledger, oldest first, as the API returns it.
     func transactions(_ walletId: String) async -> ApiResult<[Entry]> {
         await request("GET", "/wallets/\(seg(walletId))/transactions") { j in
@@ -37,6 +41,15 @@ final class ApiClient {
     /// Pays `amount` from the wallet. `key` is the attempt's Idempotency-Key (SPEC.md §6.2).
     func pay(_ walletId: String, _ amount: String, key: String) async -> ApiResult<Payment> {
         await request("POST", "/payments", body: ["wallet_id": walletId, "amount": amount], key: key, parse: Payment.from)
+    }
+
+    func getPayment(_ paymentId: String) async -> ApiResult<Payment> {
+        await request("GET", "/payments/\(seg(paymentId))", parse: Payment.from)
+    }
+
+    /// Refunds `amount` of the payment. `key` is the attempt's Idempotency-Key (SPEC.md §6.2).
+    func refund(_ paymentId: String, _ amount: String, key: String) async -> ApiResult<RefundResult> {
+        await request("POST", "/payments/\(seg(paymentId))/refunds", body: ["amount": amount], key: key, parse: RefundResult.from)
     }
 
     private func seg(_ value: String) -> String {

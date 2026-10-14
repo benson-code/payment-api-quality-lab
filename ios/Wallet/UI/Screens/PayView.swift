@@ -21,7 +21,7 @@ final class PayModel {
         let replayed: Bool
     }
 
-    let attempt = Attempt()
+    let attempt = Attempt(idempotent: true)
     var amount = ""
     private(set) var step = Step.amount
     private(set) var wallet: Wallet?
@@ -51,7 +51,7 @@ final class PayModel {
     }
 
     func confirm() async {
-        let result = await attempt.submit(amount) { amount, key in await api.pay(walletId, amount, key: key) }
+        let result = await attempt.submit(amount) { amount, key in await api.pay(walletId, amount, key: key!) }
         if case .ok(let payment, let replayed) = result {
             receipt = Receipt(payment: payment, replayed: replayed)
         }
@@ -61,11 +61,14 @@ final class PayModel {
 struct PayView: View {
     let onBack: () -> Void
     let onDone: () -> Void
+    let onViewPayment: (_ paymentId: String) -> Void
     @State private var model: PayModel
 
-    init(api: ApiClient, walletId: String, onBack: @escaping () -> Void, onDone: @escaping () -> Void) {
+    init(api: ApiClient, walletId: String, onBack: @escaping () -> Void, onDone: @escaping () -> Void,
+         onViewPayment: @escaping (String) -> Void) {
         self.onBack = onBack
         self.onDone = onDone
+        self.onViewPayment = onViewPayment
         _model = State(initialValue: PayModel(api: api, walletId: walletId))
     }
 
@@ -145,41 +148,22 @@ struct PayView: View {
         }
     }
 
-    /// The screen after the payment went through (hook "result"). No back button: the money has moved,
-    /// and the way on is Done. `replayed`: the API answered Idempotent-Replayed: true (SPEC K-06).
+    /// The receipt: Done goes Home, View payment opens the payment's detail (SPEC §4).
     private func receiptScreen(_ receipt: PayModel.Receipt) -> some View {
         let p = receipt.payment
-        return Screen(title: "Payment") {
+        return Receipt(title: "Payment", heading: "Payment completed", amount: p.amount, replayed: receipt.replayed) {
             WalletButton(text: "Done", testTag: "done", action: onDone)
-        } content: {
-            VStack(alignment: .leading, spacing: WalletSpacing.lg) {
-                HStack(spacing: WalletSpacing.sm) {
-                    Image(systemName: "checkmark.circle").foregroundStyle(WalletColors.amountCredit).accessibilityHidden(true)
-                    Text("Payment completed").walletText(WalletType.titleLarge).foregroundStyle(WalletColors.textPrimary)
-                }
-                HStack(alignment: .firstTextBaseline, spacing: WalletSpacing.sm) {
-                    Text(Money.display(p.amount)).walletText(WalletType.displayBalance).foregroundStyle(WalletColors.textPrimary)
-                        .accessibilityIdentifier("result-amount")
-                    Text("TWD").walletText(WalletType.bodyStrong).foregroundStyle(WalletColors.textSecondary)
-                }
-                if receipt.replayed {
-                    Message(kind: .success, text: Messages.replayed, testTag: "replayed")
-                }
-                WalletCard(spacing: 0, padding: EdgeInsets(top: WalletSpacing.xs, leading: WalletSpacing.xl,
-                                                           bottom: WalletSpacing.xs, trailing: WalletSpacing.xl)) {
-                    ReceiptRow(label: "Status", value: "Completed")
-                    RowDivider()
-                    ReceiptRow(label: "Time", value: Formats.dateTime(p.createdAt))
-                    RowDivider()
-                    ReceiptRow(label: "Payment ID", value: p.paymentId, valueTestTag: "result-payment-id")
-                    if let balance = p.balanceAfter {
-                        RowDivider()
-                        ReceiptRow(label: "Balance after", value: Money.display(balance), valueTestTag: "result-balance", suffix: "TWD")
-                    }
-                }
+            WalletButton(text: "View payment", testTag: "view-payment", kind: .ghost) { onViewPayment(p.paymentId) }
+        } rows: {
+            ReceiptRow(label: "Status", value: "Completed")
+            RowDivider()
+            ReceiptRow(label: "Time", value: Formats.dateTime(p.createdAt))
+            RowDivider()
+            ReceiptRow(label: "Payment ID", value: p.paymentId, valueTestTag: "result-payment-id")
+            if let balance = p.balanceAfter {
+                RowDivider()
+                ReceiptRow(label: "Balance after", value: Money.display(balance), valueTestTag: "result-balance", suffix: "TWD")
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("result")
         }
     }
 }
